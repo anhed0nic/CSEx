@@ -1,0 +1,109 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Core</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Core.VexArch">
+            <summary>
+            VEX supported architectures (equivalent to VexArch)
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexEndness">
+            <summary>
+            Endianness specification (equivalent to VexEndness)
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexArchInfo">
+            <summary>
+            Architecture information and capabilities
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexHwCapsX86">
+            <summary>
+            Hardware capabilities for x86 architecture
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexHwCapsAMD64">
+            <summary>
+            Hardware capabilities for AMD64 architecture
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexHwCapsARM">
+            <summary>
+            Hardware capabilities for ARM architecture
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexCacheKind">
+            <summary>
+            Cache information (equivalent to VexCache)
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexCacheInfo">
+            <summary>
+            Cache system information
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.VexArchExtensions">
+            <summary>
+            Extension methods for architecture utilities
+            </summary>
+        </member>
+        <member name="M:CSEx.Core.VexArchExtensions.GetName(CSEx.Core.VexArch)">
+            <summary>
+            Get human-readable name for architecture
+            </summary>
+        </member>
+        <member name="M:CSEx.Core.VexArchExtensions.GetName(CSEx.Core.VexEndness)">
+            <summary>
+            Get human-readable name for endianness
+            </summary>
+        </member>
+        <member name="M:CSEx.Core.VexArchExtensions.Is64Bit(CSEx.Core.VexArch)">
+            <summary>
+            Check if architecture is 64-bit
+            </summary>
+        </member>
+        <member name="M:CSEx.Core.VexArchExtensions.GetWordSize(CSEx.Core.VexArch)">
+            <summary>
+            Get word size in bytes for architecture
+            </summary>
+        </member>
+        <member name="M:CSEx.Core.VexArchExtensions.GetPointerSize(CSEx.Core.VexArch)">
+            <summary>
+            Get pointer size in bytes for architecture
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.BasicTypes">
+            <summary>
+            Basic types corresponding to VEX's libvex_basictypes.h
+            These types maintain exact size compatibility with the original VEX
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.U128">
+            <summary>
+            128-bit vector type (equivalent to VEX U128[4])
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.U256">
+            <summary>
+            256-bit vector type (equivalent to VEX U256[8])
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.V128">
+            <summary>
+            128-bit vector union for convenient access (equivalent to VEX V128)
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.V256">
+            <summary>
+            256-bit vector union for convenient access (equivalent to VEX V256)
+            </summary>
+        </member>
+        <member name="T:CSEx.Core.V512">
+            <summary>
+            512-bit vector union for convenient access (equivalent to AVX-512 ZMM)
+            </summary>
+        </member>
+    </members>
+</doc>

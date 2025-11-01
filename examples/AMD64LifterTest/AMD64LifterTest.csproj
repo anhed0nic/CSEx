@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CSEx.Lifters.AMD64\CSEx.Lifters.AMD64.csproj" />
+    <ProjectReference Include="..\..\src\CSEx.Guests.AMD64\CSEx.Guests.AMD64.csproj" />
+    <ProjectReference Include="..\..\src\CSEx.IR\CSEx.IR.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,171 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "CSEx.Core/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/CSEx.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/CSEx.Core.dll": {}
+        }
+      },
+      "CSEx.Guests/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "dependencies": {
+          "CSEx.Core": "1.0.0",
+          "CSEx.IR": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/CSEx.Guests.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/CSEx.Guests.dll": {}
+        }
+      },
+      "CSEx.Guests.AMD64/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "dependencies": {
+          "CSEx.Core": "1.0.0",
+          "CSEx.Guests": "1.0.0",
+          "CSEx.IR": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/CSEx.Guests.AMD64.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/CSEx.Guests.AMD64.dll": {}
+        }
+      },
+      "CSEx.IR/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "dependencies": {
+          "CSEx.Core": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/CSEx.IR.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/CSEx.IR.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "CSEx.Core/1.0.0": {
+      "type": "project",
+      "path": "../CSEx.Core/CSEx.Core.csproj",
+      "msbuildProject": "../CSEx.Core/CSEx.Core.csproj"
+    },
+    "CSEx.Guests/1.0.0": {
+      "type": "project",
+      "path": "../CSEx.Guests/CSEx.Guests.csproj",
+      "msbuildProject": "../CSEx.Guests/CSEx.Guests.csproj"
+    },
+    "CSEx.Guests.AMD64/1.0.0": {
+      "type": "project",
+      "path": "../CSEx.Guests.AMD64/CSEx.Guests.AMD64.csproj",
+      "msbuildProject": "../CSEx.Guests.AMD64/CSEx.Guests.AMD64.csproj"
+    },
+    "CSEx.IR/1.0.0": {
+      "type": "project",
+      "path": "../CSEx.IR/CSEx.IR.csproj",
+      "msbuildProject": "../CSEx.IR/CSEx.IR.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "CSEx.Core >= 1.0.0",
+      "CSEx.Guests >= 1.0.0",
+      "CSEx.Guests.AMD64 >= 1.0.0",
+      "CSEx.IR >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\user\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Lifters.AMD64\\CSEx.Lifters.AMD64.csproj",
+      "projectName": "CSEx.Lifters.AMD64",
+      "projectPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Lifters.AMD64\\CSEx.Lifters.AMD64.csproj",
+      "packagesPath": "C:\\Users\\user\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Lifters.AMD64\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\user\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Core\\CSEx.Core.csproj": {
+              "projectPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Core\\CSEx.Core.csproj"
+            },
+            "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Guests.AMD64\\CSEx.Guests.AMD64.csproj": {
+              "projectPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Guests.AMD64\\CSEx.Guests.AMD64.csproj"
+            },
+            "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Guests\\CSEx.Guests.csproj": {
+              "projectPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.Guests\\CSEx.Guests.csproj"
+            },
+            "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.IR\\CSEx.IR.csproj": {
+              "projectPath": "C:\\Users\\user\\source\\repos\\vex\\csex\\src\\CSEx.IR\\CSEx.IR.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "10.0.100"
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.100-rc.1.25451.107/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

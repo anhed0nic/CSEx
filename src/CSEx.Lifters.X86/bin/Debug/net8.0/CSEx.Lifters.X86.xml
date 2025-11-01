@@ -1,0 +1,1200 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Lifters.X86</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Lifters.X86.BaseBasicBlockLifter`1">
+            <summary>
+            Base class for x86-family basic block lifters.
+            Provides common infrastructure for x86, AMD64, and other x86-family architectures.
+            Based on VEX guest_*_toIR.c pattern for code reuse.
+            </summary>
+            <typeparam name="TGuestState">Guest state type (X86GuestState, AMD64GuestState, etc.)</typeparam>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseBasicBlockLifter`1.CurrentInstructionAddress">
+            <summary>
+            Current instruction start address for debugging/error reporting
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseBasicBlockLifter`1.MaxInstructions">
+            <summary>
+            Maximum instructions to lift in a single basic block
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseBasicBlockLifter`1.MaxBytes">
+            <summary>
+            Maximum bytes to process in a single basic block
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseBasicBlockLifter`1.ArchWordSize">
+            <summary>
+            Architecture-specific word size (32-bit for x86, 64-bit for AMD64)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseBasicBlockLifter`1.ArchIPType">
+            <summary>
+            Architecture-specific instruction pointer type
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.GetArchRegisterName(System.String)">
+            <summary>
+            Get architecture-specific register name for operand conversion
+            Override for AMD64 to handle extended registers (R8-R15)
+            </summary>
+            <param name="regName">Register name</param>
+            <returns>Architecture-specific register name</returns>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.GetArchOperandSize(System.Int32)">
+            <summary>
+            Architecture-specific operand size calculation
+            Override for AMD64 to handle 64-bit default operand sizes
+            </summary>
+            <param name="operandSize">Base operand size</param>
+            <returns>Architecture-specific operand size</returns>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.IsBasicBlockTerminator(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Check if instruction terminates a basic block
+            Can be overridden for architecture-specific control flow
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.LiftBasicBlock(System.Byte[],System.UInt64,System.Int32)">
+            <summary>
+            Common infrastructure for lifting basic blocks
+            Architecture-specific implementations override LiftInstruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.CreateInstructionDecoder(System.Byte[])">
+            <summary>
+            Create architecture-specific instruction decoder
+            Override for AMD64 to handle REX prefixes and extended encoding
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.LiftInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.UInt64)">
+            <summary>
+            Architecture-specific instruction lifting
+            Must be implemented by concrete classes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.AddIMark(System.UInt64,System.UInt32)">
+            <summary>
+            Common helper for creating IMark statements
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.NewTemp(CSEx.IR.IRType)">
+            <summary>
+            Common helper for temporary variable creation
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.GetRegisterOffset(System.String)">
+            <summary>
+            Architecture-specific register offset calculation
+            Override for AMD64 to handle 64-bit register layout
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.GetRegister(System.String,System.Nullable{CSEx.IR.IRType})">
+            <summary>
+            Common helper for register reads with guest state integration
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.PutRegister(System.String,CSEx.IR.IRExpr)">
+            <summary>
+            Common helper for register writes with guest state integration
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseBasicBlockLifter`1.UpdateFlags(CSEx.IR.IRExpr,CSEx.IR.IRExpr,CSEx.IR.IRExpr,System.String)">
+            <summary>
+            Enhanced helper for flag computation with guest state integration
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.BaseX86Lifter">
+            <summary>
+            Base class for x86/AMD64 instruction lifters with shared processor extension support
+            Provides configurable word size, stack pointer size, and address width
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseX86Lifter.ArchWordSize">
+            <summary>
+            Architecture word size in bytes (4 for x86, 8 for AMD64)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseX86Lifter.StackWordSize">
+            <summary>
+            Stack pointer increment/decrement size in bytes (4 for x86, 8 for AMD64)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseX86Lifter.ArchAddressType">
+            <summary>
+            Address type for memory operations (I32 for x86, I64 for AMD64)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.BaseX86Lifter.StackPointerRegister">
+            <summary>
+            Stack pointer register for this architecture
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.CreateStackIncrement">
+            <summary>
+            Create architecture-appropriate constant for stack operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.GetAddressAddOp">
+            <summary>
+            Create architecture-appropriate binary operation for address arithmetic
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.GetAddressSubOp">
+            <summary>
+            Create architecture-appropriate binary operation for address subtraction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.LiftMMXInstruction(System.String,System.Object[],CSEx.IR.IRSB)">
+            <summary>
+            Lift MMX instruction - works identically on both x86 and AMD64
+            MMX instructions operate on 64-bit MM registers and work the same way
+            regardless of whether we're in 32-bit or 64-bit mode
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.LiftSSEInstruction(System.String,System.Object[],CSEx.IR.IRSB)">
+            <summary>
+            Lift SSE instruction - works identically on both x86 and AMD64
+            SSE instructions operate on 128-bit XMM registers and work the same way
+            regardless of whether we're in 32-bit or 64-bit mode
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.BaseX86Lifter.LiftAVXInstruction(System.String,System.Object[],CSEx.IR.IRSB)">
+            <summary>
+            Lift AVX instruction - works identically on both x86 and AMD64
+            AVX instructions operate on 256-bit YMM registers and work the same way
+            regardless of whether we're in 32-bit or 64-bit mode
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86BasicBlockLifter">
+            <summary>
+            x86 Basic Block Lifter - converts x86 instruction bytes to VEX IR basic blocks
+            Uses composition to access shared processor extension support from BaseX86Lifter
+            Based on VEX guest_x86_toIR.c architecture
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86BasicBlockLifter.ArchWordSize">
+            <summary>
+            x86 uses 32-bit word size
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86BasicBlockLifter.ArchIPType">
+            <summary>
+            x86 uses 32-bit instruction pointer
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetRegisterOffset(System.String)">
+            <summary>
+            x86-specific register offset lookup using guest state
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.UInt64)">
+            <summary>
+            x86-specific instruction lifting implementation
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.IsBasicBlockTerminator(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Check if instruction terminates a basic block
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMov(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MOV instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAdd(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift ADD instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSub(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SUB instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAnd(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift AND instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftOr(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift OR instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftXor(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift XOR instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftArithmeticInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,CSEx.IR.IROp,CSEx.IR.IROp)">
+            <summary>
+            Generic arithmetic instruction lifting
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftCmp(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift CMP instruction (like SUB but doesn't store result)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftTest(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift TEST instruction (like AND but doesn't store result)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftJmp(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift unconditional JMP instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftConditionalJump(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Lift conditional jump instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftRet(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift RET instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Fallback for unsupported instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.OperandToExpression(CSEx.Lifters.X86.X86Decoder.X86Operand)">
+            <summary>
+            Convert operand to IR expression
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.StoreToOperand(CSEx.Lifters.X86.X86Decoder.X86Operand,CSEx.IR.IRExpr)">
+            <summary>
+            Store expression to operand
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.StoreToMMXRegister(System.Int32,CSEx.IR.IRExpr)">
+            <summary>
+            Store to MMX register
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetRegisterExpression(System.String)">
+            <summary>
+            Get register expression
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.StoreToRegister(System.String,CSEx.IR.IRExpr)">
+            <summary>
+            Store to register
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateMemoryExpression(CSEx.Lifters.X86.X86Decoder.X86MemoryOperand)">
+            <summary>
+            Create memory expression
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.StoreToMemory(CSEx.Lifters.X86.X86Decoder.X86MemoryOperand,CSEx.IR.IRExpr)">
+            <summary>
+            Store to memory
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateConstantExpression(CSEx.IR.IRType,System.UInt32)">
+            <summary>
+            Create constant expression
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateConstantExpression(CSEx.IR.IRType,System.UInt64)">
+            <summary>
+            Create constant expression for addresses
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetIRType(System.Int32)">
+            <summary>
+            Get IR type from operand size
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.NewTemporary(CSEx.IR.IRType)">
+            <summary>
+            Create new temporary variable
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.AddStatement(CSEx.IR.IRStmt)">
+            <summary>
+            Add statement to IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.UpdateArithmeticFlags(CSEx.IR.IRTemp,System.Int32)">
+            <summary>
+            Update arithmetic flags (simplified implementation)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.UpdateLogicalFlags(CSEx.IR.IRTemp,System.Int32)">
+            <summary>
+            Update logical flags (simplified implementation)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateConditionExpression(System.String)">
+            <summary>
+            Create condition expression for conditional jumps
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateIRConst(CSEx.IR.IRType,CSEx.IR.IRExpr)">
+            <summary>
+            Create IRConst from expression for Exit statements
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftX87Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift x87 FPU instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetFTop">
+            <summary>
+            Get FTOP (FPU stack top pointer)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.SetFTop(CSEx.IR.IRExpr)">
+            <summary>
+            Set FTOP (FPU stack top pointer)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetSTValue(System.Int32)">
+            <summary>
+            Get ST register value using proper VEX IR GetI with circular indexing
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.SetSTValue(System.Int32,CSEx.IR.IRExpr)">
+            <summary>
+            Set ST register value using proper VEX IR PutI with circular indexing
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetSTTag(System.Int32)">
+            <summary>
+            Get ST register tag (0=empty, 1=full) using proper VEX IR GetI
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.SetSTTag(System.Int32,System.Int32)">
+            <summary>
+            Set ST register tag (0=empty, 1=full) using proper VEX IR PutI
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.X87Push(CSEx.IR.IRExpr)">
+            <summary>
+            Push value onto x87 stack with proper FTOP management
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.X87Pop">
+            <summary>
+            Pop value from x87 stack with proper FTOP management
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.PushToStack(CSEx.IR.IRExpr)">
+            <summary>
+            Push value onto stack
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.PopFromStack(CSEx.IR.IRType)">
+            <summary>
+            Pop value from stack
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetNextInstructionAddress">
+            <summary>
+            Get next instruction address
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.UpdateIncrementFlags(CSEx.IR.IRTemp,System.Int32)">
+            <summary>
+            Update flags for increment/decrement (doesn't affect carry flag)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.UpdateShiftFlags(CSEx.IR.IRTemp,System.Int32,CSEx.IR.IRExpr)">
+            <summary>
+            Update flags for shift operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMultiplication(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Handle multiplication operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftDivision(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Handle division operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftX87Load(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift FLD instruction (load floating point)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftX87Add(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift FADD instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftX87Store(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift FST instruction (store without pop)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericX87Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Generic handler for unsupported x87 instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXInstructionX86(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Adapter method to convert X86Decoder instruction to shared MMX lifting
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEInstructionX86(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Adapter method to convert X86Decoder instruction to shared SSE lifting
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.ConvertX86OperandsToGeneric(System.Object[])">
+            <summary>
+            Convert X86Decoder operands to generic object array for shared processing
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetCurrentIRSB">
+            <summary>
+            Get current IRSB for shared processor extension methods
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MMX instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetMMXRegister(System.Int32)">
+            <summary>
+            Get MMX register value as 64-bit expression
+            MMX registers alias with x87 ST registers
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.SetMMXRegister(System.Int32,CSEx.IR.IRExpr)">
+            <summary>
+            Set MMX register value from 64-bit expression
+            MMX registers alias with x87 ST registers
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXMovD(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MOVD instruction (move dword to/from MMX register)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXMovQ(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MOVQ instruction (move qword to/from MMX register)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXAdd(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift MMX addition (PADDB, PADDW, PADDD)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXSub(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift MMX subtraction (PSUBB, PSUBW, PSUBD)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateSIMDAdd(CSEx.IR.IRExpr,CSEx.IR.IRExpr,System.Int32)">
+            <summary>
+            Create SIMD addition expression for given element size
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.CreateSIMDSub(CSEx.IR.IRExpr,CSEx.IR.IRExpr,System.Int32)">
+            <summary>
+            Create SIMD subtraction expression for given element size
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXAnd(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MMX logical AND (PAND)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXOr(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MMX logical OR (POR)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXXor(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MMX logical XOR (PXOR)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXAndNot(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift MMX logical AND NOT (PANDN)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftMMXEmptyState(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift EMMS instruction (empty MMX state)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericMMXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Generic MMX instruction handler for unimplemented instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE (Streaming SIMD Extensions) instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericSSEInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Generic SSE instruction lifter for unsupported instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetXMMRegisterName(System.Int32)">
+            <summary>
+            Helper to get XMM register from XMM register number
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMove(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift SSE move instructions (MOVUPS, MOVAPS)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEArithmetic(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Lift SSE arithmetic instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSELogical(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Lift SSE logical instructions (ANDPS, ORPS, etc.)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveScalar(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE scalar move instructions (MOVSS)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveLowPacked(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE low/high packed move instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveNonTemporal(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE non-temporal move instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSECompare(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift SSE compare instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEConvert(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Lift SSE conversion instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEShuffle(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE shuffle instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEUnpack(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift SSE unpack instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.MapRegisterName(System.String)">
+            <summary>
+            Map decoder register names to guest state register names
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEHorizontal(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Lift SSE horizontal operations (HADDPS, HSUBPS, etc.)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEIntegerArithmetic(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Lift SSE integer arithmetic operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEAddSub(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift SSE add/sub operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEIntegerCompare(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Lift SSE comparison operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEShift(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Lift SSE shift operations with immediate
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEConvert(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE convert operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEStringCompare(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE string comparison operations (SSE4.2)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEBlend(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE blend operations (SSE4.1)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEExtractInsert(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE extract/insert operations (SSE4.1)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEDotProduct(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE dot product operations (SSE4.1)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveQuadword(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE move quadword operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveDoubleword(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE move doubleword operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveDuplicate(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE move duplicate operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEIntegerUnpack(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean,System.Int32)">
+            <summary>
+            Lift SSE integer unpack operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEPack(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32,System.Boolean)">
+            <summary>
+            Lift SSE pack operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEIntegerMinMax(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32,System.Boolean)">
+            <summary>
+            Lift SSE integer min/max operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEIntegerAverage(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift SSE integer average operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMoveMask(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Lift SSE move mask operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEMaskedMove(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift SSE masked move operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEFence(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Lift SSE fence operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSECacheFlush(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE cache flush operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSEPause(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE pause operation
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftSSELoadUnaligned(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift SSE load unaligned operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift AVX instruction with VEX encoding
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXMove(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX move instructions with proper 3-operand handling
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXArithmetic(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX arithmetic instructions with 3-operand format
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXLogical(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX logical instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXUnpack(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean,System.Boolean)">
+            <summary>
+            Lift AVX unpack instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVXMoveScalar(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX scalar move instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericAVXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Generic AVX instruction lifter for unsupported instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetAVXRegisterName(CSEx.Lifters.X86.X86Decoder.X86Operand,System.Boolean)">
+            <summary>
+            Get AVX register name from operand
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2IntegerArithmetic(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX2 integer arithmetic operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2IntegerLogical(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX2 integer logical operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Shift(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX2 shift operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Compare(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX2 comparison operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2MinMax(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Lift AVX2 min/max operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Broadcast(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX2 broadcast operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Gather(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX2 gather operations (complex scatter-gather memory access)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Permute(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX2 permute operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX2Blend(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Boolean)">
+            <summary>
+            Lift AVX2 blend operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetBroadcastSourceType(System.String)">
+            <summary>
+            Get the source type for broadcast operations
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX512Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Lift AVX-512 instruction with EVEX encoding
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX512Move(CSEx.Lifters.X86.X86Decoder.X86Instruction,CSEx.IR.IRType,System.Boolean)">
+            <summary>
+            Lift AVX-512 move instructions with 512-bit support
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX512IntegerArithmetic(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,CSEx.IR.IRType,System.Boolean)">
+            <summary>
+            Lift AVX-512 integer arithmetic instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftAVX512Logical(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,CSEx.IR.IRType,System.Boolean)">
+            <summary>
+            Lift AVX-512 logical instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.LiftGenericAVX512Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,CSEx.IR.IRType,System.Boolean)">
+            <summary>
+            Generic AVX-512 instruction lifter
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetAVX512RegisterName(CSEx.Lifters.X86.X86Decoder.X86Operand,CSEx.IR.IRType)">
+            <summary>
+            Get AVX-512 register name based on operand and vector type
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetMaskRegisterExpression(System.Int32)">
+            <summary>
+            Get mask register expression for AVX-512 masking
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86BasicBlockLifter.GetVectorTypeSize(CSEx.IR.IRType)">
+            <summary>
+            Get vector type size string for helper naming
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86ProcessorExtensionHelper">
+            <summary>
+            Helper class that provides X86-specific processor extension support
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86ProcessorExtensionHelper.ArchWordSize">
+            <summary>
+            x86 architecture word size (4 bytes)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86ProcessorExtensionHelper.StackWordSize">
+            <summary>
+            x86 stack word size (4 bytes)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86ProcessorExtensionHelper.ArchAddressType">
+            <summary>
+            x86 address type (32-bit)
+            </summary>
+        </member>
+        <member name="P:CSEx.Lifters.X86.X86ProcessorExtensionHelper.StackPointerRegister">
+            <summary>
+            x86 stack pointer register
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder">
+            <summary>
+            x86 instruction decoding and operand parsing infrastructure.
+            Based on VEX guest_x86_toIR.c patterns.
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.AddressingMode">
+            <summary>
+            x86 addressing modes for ModR/M byte decoding
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.InstructionType">
+            <summary>
+            x86 instruction categories
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.OperandType">
+            <summary>
+            x86 operand types
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.X86Register">
+            <summary>
+            x86 register encoding for ModR/M bytes
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.X86Operand">
+            <summary>
+            Decoded x86 instruction operand
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.X86MemoryOperand">
+            <summary>
+            x86 memory operand (base + index*scale + displacement)
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.X86Instruction">
+            <summary>
+            Decoded x86 instruction
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.VEXPrefix">
+            <summary>
+            VEX prefix structure for AVX instructions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.VEXPrefix.GetVRegister">
+            <summary>
+            Get the actual register number from vvvv field (un-inverted)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.VEXPrefix.GetImpliedPrefix">
+            <summary>
+            Convert pp field to equivalent legacy prefix
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.EVEXPrefix">
+            <summary>
+            AVX-512 EVEX prefix structure (4-byte encoding)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.GetVRegister">
+            <summary>
+            Get the actual register number from vvvv field (un-inverted)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.GetExtendedVRegister">
+            <summary>
+            Get extended register number including high-16 extensions
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.GetImpliedPrefix">
+            <summary>
+            Convert pp field to equivalent legacy prefix
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.GetVectorLength">
+            <summary>
+            Get vector length in bits
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.HasMasking">
+            <summary>
+            Check if instruction uses masking
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.EVEXPrefix.GetMaskRegister">
+            <summary>
+            Get mask register number (K0-K7)
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86Decoder.X86Prefixes">
+            <summary>
+            x86 instruction prefixes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.DecodeModRM(System.Byte)">
+            <summary>
+            Decode ModR/M byte components
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.DecodeSIB(System.Byte)">
+            <summary>
+            Decode SIB (Scale-Index-Base) byte
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.GetRegisterName(System.Byte,System.Int32)">
+            <summary>
+            Get register name for given encoding and size
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86Decoder.GetRegister(System.Byte,System.Int32)">
+            <summary>
+            Convert register encoding to X86Register enum
+            </summary>
+        </member>
+        <member name="T:CSEx.Lifters.X86.X86InstructionDecoder">
+            <summary>
+            x86 instruction decoder that parses instruction bytes into structured instruction objects.
+            Implements the decoding patterns from VEX guest_x86_toIR.c
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeInstruction">
+            <summary>
+            Decode a single x86 instruction at the current position
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.ParsePrefixes(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Parse instruction prefixes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.ParseVEXPrefix(System.Boolean)">
+            <summary>
+            Parse VEX prefix (2-byte or 3-byte format)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.ParseEVEXPrefix">
+            <summary>
+            Parse EVEX prefix (4-byte format for AVX-512)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeVEXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode VEX-encoded AVX instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeEVEXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode EVEX-encoded AVX-512 instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeInstructionByOpcode(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode instruction based on primary opcode
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeModRMInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32,System.Boolean)">
+            <summary>
+            Decode instruction with ModR/M byte (most common x86 pattern)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeMemoryOperand(System.Byte,System.Byte,System.Int32)">
+            <summary>
+            Decode memory operand from ModR/M and SIB bytes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeImmediateALInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Decode immediate to AL instruction (e.g., ADD AL, imm8)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeImmediateAXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Decode immediate to AX/EAX instruction (e.g., ADD EAX, imm32)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeRegisterImmediateInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Byte,System.Int32)">
+            <summary>
+            Decode register+immediate instruction (e.g., MOV EAX, imm32)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeSimpleInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode simple instruction with no operands (like RET)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeRegisterInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Byte,System.Int32)">
+            <summary>
+            Decode single register instruction (like INC/DEC/PUSH/POP reg)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeRelativeInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Int32)">
+            <summary>
+            Decode relative jump/call instruction
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeRetInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode RET instruction with optional immediate
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeGroup3Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode Group 3 instructions (0xF6/0xF7 - TEST, NOT, NEG, MUL, IMUL, DIV, IDIV)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeGroup2Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode Group 2 instructions (0xD0/0xD1 - shift and rotate by 1)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeGroup2InstructionCL(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode Group 2 instructions (0xD2/0xD3 - shift and rotate by CL)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeTwoByteInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Int32)">
+            <summary>
+            Decode two-byte opcodes (0x0F prefix)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeX87Instruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte,System.Int32)">
+            <summary>
+            Decode x87 FPU instruction (0xD8-0xDF)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeX87RegisterForm(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte,System.Int32,System.Int32)">
+            <summary>
+            Decode x87 register-to-register operations (mod=3)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeX87MemoryForm(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte,System.Int32,System.Byte)">
+            <summary>
+            Decode x87 memory operations (mod!=3)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeMMXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode MMX instruction with ModR/M byte
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeMMXShiftInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Decode MMX shift instruction with immediate operand
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeSSEInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode SSE instruction with ModR/M byte
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.GetSSEMnemonic(System.String,System.String,System.String,System.String)">
+            <summary>
+            Get SSE mnemonic based on prefix
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeSSEShiftInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction)">
+            <summary>
+            Decode SSE shift instructions with immediate byte
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeVEXOpcode0F(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode VEX 0x0F map instructions (most common AVX instructions)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeVEXOpcode0F38(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode VEX 0x0F38 map instructions (AVX2 integer operations)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeVEXOpcode0F3A(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode VEX 0x0F3A map instructions (AVX2 with immediate operands)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.GetAVXMnemonic(System.String,System.String,System.String,System.String)">
+            <summary>
+            Get AVX mnemonic based on VEX.pp field (equivalent to legacy prefixes)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeAVXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode AVX instruction with 3-operand format
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeAVXInstructionWithImmediate(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String,System.Boolean)">
+            <summary>
+            Decode AVX instruction with immediate operand
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeEVEXOpcode0F(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode EVEX 0x0F map opcodes (most common AVX-512 instructions)
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeEVEXOpcode0F38(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode EVEX 0x0F38 map opcodes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeEVEXOpcode0F3A(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.Byte)">
+            <summary>
+            Decode EVEX 0x0F3A map opcodes
+            </summary>
+        </member>
+        <member name="M:CSEx.Lifters.X86.X86InstructionDecoder.DecodeEVEXInstruction(CSEx.Lifters.X86.X86Decoder.X86Instruction,System.String)">
+            <summary>
+            Decode EVEX-encoded AVX-512 instruction operands
+            </summary>
+        </member>
+    </members>
+</doc>

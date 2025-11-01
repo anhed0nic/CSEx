@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.CodeGen</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.CodeGen.CodeGenerator">
+            <summary>
+            Placeholder for code generation framework
+            This will contain host code generation from IR
+            </summary>
+        </member>
+    </members>
+</doc>

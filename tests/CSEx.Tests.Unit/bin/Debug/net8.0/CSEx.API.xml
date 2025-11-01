@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.API</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.API.CSExAPI">
+            <summary>
+            Placeholder for public API layer
+            This will contain the main translation interface equivalent to libvex.h
+            </summary>
+        </member>
+    </members>
+</doc>

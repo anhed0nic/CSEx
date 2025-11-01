@@ -1,0 +1,659 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.IR</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.IR.IRConst">
+            <summary>
+            Base class for IR constants (equivalent to VEX IRConst)
+            IRConsts are used within 'Const' and 'Exit' IRExprs.
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRConst.DeepCopy">
+            <summary>
+            Deep copy the constant
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRConst.PrettyPrint">
+            <summary>
+            Pretty print the constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstU1">
+            <summary>
+            1-bit boolean constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstU8">
+            <summary>
+            8-bit unsigned integer constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstU16">
+            <summary>
+            16-bit unsigned integer constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstU32">
+            <summary>
+            32-bit unsigned integer constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstU64">
+            <summary>
+            64-bit unsigned integer constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstF32">
+            <summary>
+            32-bit IEEE754 floating point constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstF32i">
+            <summary>
+            32-bit unsigned int to be interpreted literally as IEEE754 single
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRConstF32i.AsFloat">
+            <summary>
+            Get the float interpretation of the bits
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstF64">
+            <summary>
+            64-bit IEEE754 floating point constant
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstF64i">
+            <summary>
+            64-bit unsigned int to be interpreted literally as IEEE754 double
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRConstF64i.AsDouble">
+            <summary>
+            Get the double interpretation of the bits
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstV128">
+            <summary>
+            128-bit restricted vector constant
+            with 1 bit (repeated 8 times) for each of the 16 x 1-byte lanes
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstV256">
+            <summary>
+            256-bit restricted vector constant
+            with 1 bit (repeated 8 times) for each of the 32 x 1-byte lanes
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstV512">
+            <summary>
+            512-bit vector constant (AVX-512 ZMM)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstFactory">
+            <summary>
+            Factory methods for creating IR constants
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRExprTag">
+            <summary>
+            The different kinds of expressions (equivalent to VEX IRExprTag)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRExpr">
+            <summary>
+            Base class for all IR expressions (equivalent to VEX IRExpr)
+            Expressions represent operations without side effects.
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRExpr.DeepCopy">
+            <summary>
+            Deep copy the expression
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRExpr.PrettyPrint">
+            <summary>
+            Pretty print the expression  
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRExpr.Accept``1(CSEx.IR.IIRExprVisitor{``0})">
+            <summary>
+            Accept visitor for traversal
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IIRExprVisitor`1">
+            <summary>
+            Visitor interface for IR expressions
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRExprBinder">
+            <summary>
+            Pattern matching binder (used only within Vex, should not be seen outside)
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprGet" -->
+        <member name="T:CSEx.IR.IRRegArray">
+            <summary>
+            Guest register array descriptor for circular indexing
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprGetI" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprRdTmp" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprQop" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprTriop" -->
+        <member name="T:CSEx.IR.IRExprVECRET">
+            <summary>
+            Vector return placeholder - used in helper call arg lists to indicate 
+            where the returned vector value should be placed.
+            ppIRExpr output: VECRET
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRExprGSPTR">
+            <summary>
+            Guest state pointer - used in helper call arg lists to pass a pointer
+            to the guest state to the helper function.
+            ppIRExpr output: GSPTR
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprBinop" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprUnop" -->
+        <member name="T:CSEx.IR.IREndness">
+            <summary>
+            Memory endianness for Load/Store operations
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprLoad" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprConst" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprITE" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRExprCCall" -->
+        <member name="T:CSEx.IR.IRCallTarget">
+            <summary>
+            Call target for CCall expressions
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRExprFactory">
+            <summary>
+            Factory methods for creating IR expressions
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IROp">
+            <summary>
+            Primitive operations used in Unop, Binop, Triop and Qop IRExprs
+            (equivalent to VEX IROp enum)
+            
+            Most instructions supported by the architectures that Vex supports
+            (x86, PPC, etc) are represented. Some more obscure ones (eg. cpuid)
+            are handled with dirty helpers that emulate their functionality.
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IROpExtensions">
+            <summary>
+            Extension methods for IROp operations
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IROpExtensions.GetArity(CSEx.IR.IROp)">
+            <summary>
+            Get the arity (number of arguments) for an operation
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IROpExtensions.IsComparison(CSEx.IR.IROp)">
+            <summary>
+            Check if operation is a comparison
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IROpExtensions.IsFloatingPoint(CSEx.IR.IROp)">
+            <summary>
+            Check if operation is floating point
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IROpExtensions.PrettyPrint(CSEx.IR.IROp)">
+            <summary>
+            Pretty print an operation
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTypeEnv">
+            <summary>
+            IR Type Environment - manages types for IR temporaries
+            Equivalent to VEX IRTypeEnv
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.#ctor">
+            <summary>
+            Initialize empty type environment
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.#ctor(System.Int32)">
+            <summary>
+            Initialize with specific capacity
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.#ctor(System.Collections.Generic.IEnumerable{CSEx.IR.IRType})">
+            <summary>
+            Copy constructor
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRTypeEnv.Count">
+            <summary>
+            Number of temporaries defined
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.GetType(CSEx.IR.IRTemp)">
+            <summary>
+            Get type of a temporary
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.NewTemp(CSEx.IR.IRType)">
+            <summary>
+            Create a new temporary with the given type
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.AddTemp(CSEx.IR.IRType)">
+            <summary>
+            Add a temporary with explicit type (for reconstruction)
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRTypeEnv.Types">
+            <summary>
+            Get all types in order
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.IsTempDefined(CSEx.IR.IRTemp)">
+            <summary>
+            Check if a temporary is defined
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.DeepCopy">
+            <summary>
+            Deep copy the type environment
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeEnv.PrettyPrint">
+            <summary>
+            Pretty print the type environment
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRSB">
+            <summary>
+            IR Super Block - a single-entry, multiple-exit sequence of statements
+            Equivalent to VEX IRSB
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.TypeEnv">
+            <summary>
+            Type environment for temporaries
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.Next">
+            <summary>
+            Next destination if block executes to completion
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.JumpKind">
+            <summary>
+            Jump kind for final exit
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.OffsIP">
+            <summary>
+            Guest state offset for instruction pointer
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.Statements">
+            <summary>
+            Read-only view of statements
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.#ctor">
+            <summary>
+            Create empty IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.#ctor(CSEx.IR.IRTypeEnv)">
+            <summary>
+            Create IRSB with specified type environment
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.#ctor(System.Int32)">
+            <summary>
+            Create IRSB with capacity hint
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.#ctor(CSEx.IR.IRTypeEnv,System.Collections.Generic.IEnumerable{CSEx.IR.IRStmt},CSEx.IR.IRExpr,CSEx.IR.IRJumpKind,System.Int32)">
+            <summary>
+            Copy constructor for deep copy
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.AddStatement(CSEx.IR.IRStmt)">
+            <summary>
+            Add a statement to the IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.AddStatements(System.Collections.Generic.IEnumerable{CSEx.IR.IRStmt})">
+            <summary>
+            Add multiple statements
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.InsertStatement(System.Int32,CSEx.IR.IRStmt)">
+            <summary>
+            Insert statement at specific index
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.RemoveStatementAt(System.Int32)">
+            <summary>
+            Remove statement at index
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.ReplaceStatement(System.Int32,CSEx.IR.IRStmt)">
+            <summary>
+            Replace statement at index
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.ClearStatements">
+            <summary>
+            Clear all statements
+            </summary>
+        </member>
+        <member name="P:CSEx.IR.IRSB.StatementCount">
+            <summary>
+            Number of statements
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.NewTemp(CSEx.IR.IRType)">
+            <summary>
+            Create a new temporary in the type environment
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.TypeOfTemp(CSEx.IR.IRTemp)">
+            <summary>
+            Get type of a temporary
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.DeepCopy">
+            <summary>
+            Deep copy the IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.DeepCopyExceptStatements">
+            <summary>
+            Deep copy IRSB except statements (for optimization passes)
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSB.PrettyPrint">
+            <summary>
+            Pretty print the IRSB
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRSBFactory">
+            <summary>
+            Factory class for creating IRSBs
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSBFactory.Empty">
+            <summary>
+            Create an empty IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSBFactory.Empty(System.Int32)">
+            <summary>
+            Create an empty IRSB with capacity hint
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSBFactory.WithTypeEnv(CSEx.IR.IRTypeEnv)">
+            <summary>
+            Create an IRSB with a pre-existing type environment
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRStmtTag">
+            <summary>
+            The different kinds of statements (equivalent to VEX IRStmtTag)
+            Statements represent operations with side effects.
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRStmt">
+            <summary>
+            Base class for all IR statements (equivalent to VEX IRStmt)
+            Statements represent operations with side effects.
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRStmt.DeepCopy">
+            <summary>
+            Deep copy the statement
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRStmt.PrettyPrint">
+            <summary>
+            Pretty print the statement  
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRStmt.Accept``1(CSEx.IR.IIRStmtVisitor{``0})">
+            <summary>
+            Accept visitor for traversal
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IIRStmtVisitor`1">
+            <summary>
+            Visitor interface for IR statements
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRStmtNoOp">
+            <summary>
+            A no-op statement (usually resulting from IR optimization)
+            ppIRStmt output: IR-NoOp
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtIMark" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtAbiHint" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtPut" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtWrTmp" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtStore" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtPutI" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtLoadG" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtStoreG" -->
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtCAS" -->
+        <member name="T:CSEx.IR.IRStmtLLSC">
+            <summary>
+            Load-Linked or Store-Conditional operation
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtDirty" -->
+        <member name="T:CSEx.IR.IRStmtMBE">
+            <summary>
+            Memory bus event (fence, lock acquisition/release)
+            ppIRStmt output: MBusEvent-Fence, MBusEvent-BusLock, MBusEvent-BusUnlock
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRStmtExit" -->
+        <member name="T:CSEx.IR.IRStmtFactory">
+            <summary>
+            Factory methods for creating IR statements
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRJumpKind">
+            <summary>
+            Jump kinds for Exit statements (equivalent to VEX IRJumpKind)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRMBusEvent">
+            <summary>
+            Memory bus events (equivalent to VEX IRMBusEvent)
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:CSEx.IR.IRPutI" -->
+        <member name="T:CSEx.IR.IRCAS">
+            <summary>
+            Compare-and-swap atomic operation (equivalent to VEX IRCAS)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRLoadGOp">
+            <summary>
+            Load conversion operations for guarded loads
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRLoadG">
+            <summary>
+            Guarded load details (equivalent to VEX IRLoadG)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRStoreG">
+            <summary>
+            Guarded store details (equivalent to VEX IRStoreG)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRDirty">
+            <summary>
+            Dirty call details (equivalent to VEX IRDirty)
+            Represents a call to a function with side effects
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTypeAnalysis">
+            <summary>
+            Type analysis utilities for IR expressions and statements
+            Equivalent to VEX type checking functions
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.TypeOfConst(CSEx.IR.IRConst)">
+            <summary>
+            Get the type of an IR constant
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.TypeOfTemp(CSEx.IR.IRTypeEnv,CSEx.IR.IRTemp)">
+            <summary>
+            Get the type of a temporary from the type environment
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.TypeOfExpr(CSEx.IR.IRTypeEnv,CSEx.IR.IRExpr)">
+            <summary>
+            Get the type of an IR expression
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.TypeOfLoadGOp(CSEx.IR.IRLoadGOp)">
+            <summary>
+            Get result type for Load-G operation
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.IsPlausibleType(CSEx.IR.IRType)">
+            <summary>
+            Check if a type value is plausible (for sanity checking)
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.IsFlatStmt(CSEx.IR.IRStmt)">
+            <summary>
+            Check if an IR statement is "flat" (no nested expressions beyond simple forms)
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeAnalysis.IsFlatExpr(CSEx.IR.IRExpr)">
+            <summary>
+            Check if an expression is "flat" (atomic)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTypeAnalysis.FlatCheckVisitor">
+            <summary>
+            Private visitor for flat checking
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTypeAnalysis.TypeCheckVisitor">
+            <summary>
+            Private visitor for type checking expressions
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRSBSanityCheck">
+            <summary>
+            Sanity checking utilities for IRSB validation
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSBSanityCheck.SanityCheck(CSEx.IR.IRSB,System.String,System.Boolean,CSEx.IR.IRType)">
+            <summary>
+            Perform sanity checks on an IRSB
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRSBSanityCheck.SanityCheck(CSEx.IR.IRSB,System.String)">
+            <summary>
+            Basic sanity check with common defaults
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRType">
+            <summary>
+            IR type indicating size and kind of values (equivalent to VEX IRType)
+            A type indicates the size of a value, and whether it's an integer, a float, or a vector (SIMD) value.
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRConstTag">
+            <summary>
+            Types of constants (equivalent to VEX IRConstTag)
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTemp">
+            <summary>
+            IR temporary handle (equivalent to VEX IRTemp)
+            The IR optimiser relies on IRTemps being 32-bit ints.
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRTypeExtensions">
+            <summary>
+            Extension methods for IR types
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.SizeOf(CSEx.IR.IRType)">
+            <summary>
+            Get the size (in bytes) of an IRType
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.SizeOfBits(CSEx.IR.IRType)">
+            <summary>
+            Get the size (in bits) of an IRType
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.IsInteger(CSEx.IR.IRType)">
+            <summary>
+            Check if type is an integer type
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.IsFloat(CSEx.IR.IRType)">
+            <summary>
+            Check if type is a floating point type
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.IsDecimal(CSEx.IR.IRType)">
+            <summary>
+            Check if type is a decimal floating point type
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.IsVector(CSEx.IR.IRType)">
+            <summary>
+            Check if type is a vector/SIMD type
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.IntegerIRTypeOfSize(System.Int32)">
+            <summary>
+            Get appropriate integer IRType for given size in bytes
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IRTypeExtensions.PrettyPrint(CSEx.IR.IRType)">
+            <summary>
+            Pretty-print an IRType
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IREndnessExtensions">
+            <summary>
+            Extension methods for IR endianness
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IREndnessExtensions.PrettyPrint(CSEx.IR.IREndness)">
+            <summary>
+            Pretty-print endianness
+            </summary>
+        </member>
+        <member name="M:CSEx.IR.IREndnessExtensions.IsNativeEndianness(CSEx.IR.IREndness)">
+            <summary>
+            Check if endianness matches system endianness
+            </summary>
+        </member>
+        <member name="T:CSEx.IR.IRCallee">
+            <summary>
+            Callee information for helper function calls (equivalent to VEX IRCallee)
+            </summary>
+        </member>
+    </members>
+</doc>

@@ -1,0 +1,14 @@
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.AssemblyInfoInputs.cache
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.AssemblyInfo.cs
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.csproj.CoreCompileInputs.cache
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.sourcelink.json
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\bin\Debug\net8.0\CSEx.Core.deps.json
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\bin\Debug\net8.0\CSEx.Core.dll
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\bin\Debug\net8.0\CSEx.Core.pdb
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\bin\Debug\net8.0\CSEx.Core.xml
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.dll
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\refint\CSEx.Core.dll
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.xml
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\CSEx.Core.pdb
+C:\Users\user\source\repos\vex\csex\src\CSEx.Core\obj\Debug\net8.0\ref\CSEx.Core.dll

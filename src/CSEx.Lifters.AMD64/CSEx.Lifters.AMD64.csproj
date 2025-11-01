@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CSEx.Core\CSEx.Core.csproj" />
+    <ProjectReference Include="..\CSEx.IR\CSEx.IR.csproj" />
+    <ProjectReference Include="..\CSEx.Guests\CSEx.Guests.csproj" />
+    <ProjectReference Include="..\CSEx.Guests.AMD64\CSEx.Guests.AMD64.csproj" />
+  </ItemGroup>
+
+</Project>

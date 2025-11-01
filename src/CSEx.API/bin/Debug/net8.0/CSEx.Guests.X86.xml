@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Guests.X86</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Guests.X86.X86GuestState">
+            <summary>
+            x86 32-bit guest CPU state representation.
+            Corresponds to VexGuestX86State in original VEX.
+            </summary>
+        </member>
+        <member name="F:CSEx.Guests.X86.X86GuestState.RegisterMap">
+            <summary>
+            Register name to offset mapping for x86
+            </summary>
+        </member>
+        <member name="T:CSEx.Guests.X86.X86Lifter">
+            <summary>
+            Placeholder for x86 guest lifter
+            This will contain the x86 instruction lifting logic (~14,178 lines from original VEX)
+            </summary>
+        </member>
+    </members>
+</doc>

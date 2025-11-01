@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Guests.AMD64</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Guests.AMD64.AMD64GuestState">
+            <summary>
+            AMD64 (x86-64) guest CPU state representation.
+            Corresponds to VexGuestAMD64State in original VEX.
+            </summary>
+        </member>
+        <member name="F:CSEx.Guests.AMD64.AMD64GuestState.RegisterMap">
+            <summary>
+            Register name to offset mapping for AMD64
+            </summary>
+        </member>
+        <member name="T:CSEx.Guests.AMD64.AMD64Lifter">
+            <summary>
+            Placeholder for AMD64 guest lifter
+            This will contain the AMD64 instruction lifting logic (~29,894 lines from original VEX)
+            </summary>
+        </member>
+    </members>
+</doc>

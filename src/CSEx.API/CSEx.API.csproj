@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>CSEx Team</Authors>
+    <Description>Public API for CSEx - C# port of VEX IR</Description>
+    <PackageProjectUrl>https://github.com/angr/vex</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CSEx.Core\CSEx.Core.csproj" />
+    <ProjectReference Include="..\CSEx.IR\CSEx.IR.csproj" />
+    <ProjectReference Include="..\CSEx.Guests.X86\CSEx.Guests.X86.csproj" />
+    <ProjectReference Include="..\CSEx.Guests.AMD64\CSEx.Guests.AMD64.csproj" />
+    <ProjectReference Include="..\CSEx.Guests.ARM\CSEx.Guests.ARM.csproj" />
+    <ProjectReference Include="..\CSEx.Optimization\CSEx.Optimization.csproj" />
+    <ProjectReference Include="..\CSEx.CodeGen\CSEx.CodeGen.csproj" />
+  </ItemGroup>
+
+</Project>

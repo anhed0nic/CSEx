@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Guests.ARM</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Guests.ARM.ARMGuestState">
+            <summary>
+            ARM 32-bit guest CPU state representation.
+            Corresponds to VexGuestARMState in original VEX.
+            </summary>
+        </member>
+        <member name="T:CSEx.Guests.ARM.ARMGuestState.ARMCCOp">
+            <summary>
+            ARM condition code operations
+            </summary>
+        </member>
+        <member name="F:CSEx.Guests.ARM.ARMGuestState.RegisterMap">
+            <summary>
+            Register name to offset mapping for ARM
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.ARM.ARMGuestState.GetPC">
+            <summary>
+            Helper to extract the PC value (without Thumb bit)
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.ARM.ARMGuestState.IsThumbMode">
+            <summary>
+            Helper to check if processor is in Thumb mode
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.ARM.ARMGuestState.SetPC(System.UInt32,System.Boolean)">
+            <summary>
+            Helper to set PC and Thumb mode
+            </summary>
+        </member>
+        <member name="T:CSEx.Guests.ARM.ARMLifter">
+            <summary>
+            Placeholder for ARM guest lifters
+            This will contain ARM32 and ARM64 instruction lifting logic 
+            (~22,220 lines for ARM32 + ~13,501 lines for ARM64 from original VEX)
+            </summary>
+        </member>
+    </members>
+</doc>

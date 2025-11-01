@@ -1,0 +1,74 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "CSEx.Guests.X86/1.0.0": {
+        "dependencies": {
+          "CSEx.Core": "1.0.0",
+          "CSEx.Guests": "1.0.0",
+          "CSEx.IR": "1.0.0"
+        },
+        "runtime": {
+          "CSEx.Guests.X86.dll": {}
+        }
+      },
+      "CSEx.Core/1.0.0": {
+        "runtime": {
+          "CSEx.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "CSEx.Guests/1.0.0": {
+        "dependencies": {
+          "CSEx.Core": "1.0.0",
+          "CSEx.IR": "1.0.0"
+        },
+        "runtime": {
+          "CSEx.Guests.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "CSEx.IR/1.0.0": {
+        "dependencies": {
+          "CSEx.Core": "1.0.0"
+        },
+        "runtime": {
+          "CSEx.IR.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "CSEx.Guests.X86/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "CSEx.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "CSEx.Guests/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "CSEx.IR/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

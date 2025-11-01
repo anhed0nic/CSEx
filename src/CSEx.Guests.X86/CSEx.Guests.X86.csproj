@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>CSEx Team</Authors>
+    <Description>x86 instruction lifter for CSEx</Description>
+    <PackageProjectUrl>https://github.com/angr/vex</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CSEx.Core\CSEx.Core.csproj" />
+    <ProjectReference Include="..\CSEx.IR\CSEx.IR.csproj" />
+    <ProjectReference Include="..\CSEx.Guests\CSEx.Guests.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Optimization</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Optimization.IROptimizer">
+            <summary>
+            Placeholder for IR optimization engine
+            This will contain IR transformation and optimization passes
+            </summary>
+        </member>
+    </members>
+</doc>

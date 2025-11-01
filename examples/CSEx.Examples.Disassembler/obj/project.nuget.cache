@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "ahTZHtVJ0pk=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\user\\source\\repos\\vex\\csex\\examples\\CSEx.Examples.Disassembler\\CSEx.Examples.Disassembler.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\user\\.nuget\\packages\\system.reflection.emit\\4.7.0\\system.reflection.emit.4.7.0.nupkg.sha512"
+  ],
+  "logs": []
+}

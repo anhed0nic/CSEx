@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CSEx.Guests</name>
+    </assembly>
+    <members>
+        <member name="T:CSEx.Guests.IGuestState">
+            <summary>
+            Base interface for all guest CPU state representations.
+            Provides common functionality needed across all architectures.
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.IGuestState.GuestWordSize">
+            <summary>
+            The guest word size (32 or 64 bits)
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.IGuestState.GuestIPType">
+            <summary>
+            The instruction pointer type for this architecture
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.IGuestState.Initialize">
+            <summary>
+            Initialize the guest state to default values
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.IGuestState.DeepCopy">
+            <summary>
+            Create a deep copy of the guest state
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.IGuestState.GetRegisterOffset(System.String)">
+            <summary>
+            Get the offset of a guest register within the state structure
+            </summary>
+            <param name="registerName">The name of the register</param>
+            <returns>Byte offset within the state structure</returns>
+        </member>
+        <member name="M:CSEx.Guests.IGuestState.GetRegisterType(System.String)">
+            <summary>
+            Get the type of a guest register
+            </summary>
+            <param name="registerName">The name of the register</param>
+            <returns>The IR type of the register</returns>
+        </member>
+        <member name="M:CSEx.Guests.IGuestState.RequiresPreciseMemoryExceptions(System.Int32,System.Int32)">
+            <summary>
+            Check if the architecture requires precise memory exceptions for a given offset range
+            </summary>
+            <param name="minOffset">Minimum byte offset in state</param>
+            <param name="maxOffset">Maximum byte offset in state</param>
+            <returns>True if precise exceptions are required</returns>
+        </member>
+        <member name="T:CSEx.Guests.GuestStateBase">
+            <summary>
+            Base class for all guest CPU states providing common functionality
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.HostEvCFailAddr">
+            <summary>
+            Event check fail address - used for debugging/monitoring
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.HostEvCCounter">
+            <summary>
+            Event check counter - used for debugging/monitoring
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestEmNote">
+            <summary>
+            Emulation notes - used to communicate special conditions
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestCMStart">
+            <summary>
+            Cache management start address
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestCMLen">
+            <summary>
+            Cache management length
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestNRAddr">
+            <summary>
+            No-redirection address - used for address translation debugging
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestIPAtSyscall">
+            <summary>
+            Instruction pointer at last syscall - used for syscall restart
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestWordSize">
+            <summary>
+            The guest word size (32 or 64 bits)
+            </summary>
+        </member>
+        <member name="P:CSEx.Guests.GuestStateBase.GuestIPType">
+            <summary>
+            The instruction pointer type for this architecture
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.Initialize">
+            <summary>
+            Initialize the guest state to default values
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.InitializeArchSpecific">
+            <summary>
+            Initialize architecture-specific registers
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.DeepCopy">
+            <summary>
+            Create a deep copy of the guest state
+            </summary>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.GetRegisterOffset(System.String)">
+            <summary>
+            Get the offset of a guest register within the state structure
+            </summary>
+            <param name="registerName">The name of the register</param>
+            <returns>Byte offset within the state structure</returns>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.GetRegisterType(System.String)">
+            <summary>
+            Get the type of a guest register
+            </summary>
+            <param name="registerName">The name of the register</param>
+            <returns>The IR type of the register</returns>
+        </member>
+        <member name="M:CSEx.Guests.GuestStateBase.RequiresPreciseMemoryExceptions(System.Int32,System.Int32)">
+            <summary>
+            Check if the architecture requires precise memory exceptions for a given offset range
+            </summary>
+            <param name="minOffset">Minimum byte offset in state</param>
+            <param name="maxOffset">Maximum byte offset in state</param>
+            <returns>True if precise exceptions are required</returns>
+        </member>
+        <member name="T:CSEx.Guests.CCOp">
+            <summary>
+            Condition code operation types - used for lazy flag evaluation
+            Common across x86/AMD64 architectures  
+            </summary>
+        </member>
+    </members>
+</doc>

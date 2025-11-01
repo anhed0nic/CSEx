@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Authors>CSEx Team</Authors>
+    <Description>Example disassembler using CSEx</Description>
+    <PackageProjectUrl>https://github.com/angr/vex</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CSEx.Core\CSEx.Core.csproj" />
+    <ProjectReference Include="..\..\src\CSEx.IR\CSEx.IR.csproj" />
+    <ProjectReference Include="..\..\src\CSEx.API\CSEx.API.csproj" />
+  </ItemGroup>
+
+</Project>

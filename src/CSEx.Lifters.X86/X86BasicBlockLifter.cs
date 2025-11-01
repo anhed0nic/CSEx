@@ -1,0 +1,3359 @@
+using CSEx.IR;
+using CSEx.Core;
+using CSEx.Guests.X86;
+using CSEx.Lifters.X86;
+using System;
+
+namespace CSEx.Lifters.X86
+{
+    /// <summary>
+    /// x86 Basic Block Lifter - converts x86 instruction bytes to VEX IR basic blocks
+    /// Uses composition to access shared processor extension support from BaseX86Lifter
+    /// Based on VEX guest_x86_toIR.c architecture
+    /// </summary>
+    public class X86BasicBlockLifter : BaseBasicBlockLifter<X86GuestState>
+    {
+        private readonly BaseX86Lifter _processorExtensions;
+
+        public X86BasicBlockLifter(X86GuestState guestState) : base(guestState)
+        {
+            // Create a helper instance for processor extensions
+            _processorExtensions = new X86ProcessorExtensionHelper();
+        }
+
+        /// <summary>
+        /// x86 uses 32-bit word size
+        /// </summary>
+        protected override IRType ArchWordSize => IRType.I32;
+
+        /// <summary>
+        /// x86 uses 32-bit instruction pointer
+        /// </summary>
+        protected override IRType ArchIPType => IRType.I32;
+
+        /// <summary>
+        /// x86-specific register offset lookup using guest state
+        /// </summary>
+        protected override int GetRegisterOffset(string regName)
+        {
+            return _guestState.GetRegisterOffset(regName);
+        }
+
+        /// <summary>
+        /// x86-specific instruction lifting implementation
+        /// </summary>
+        protected override bool LiftInstruction(X86Decoder.X86Instruction instruction, ulong address)
+        {
+            try
+            {
+                // Add instruction marker comment
+                AddIMark(address, (uint)instruction.Length);
+                
+                // Lift based on instruction mnemonic and type
+                return instruction.InstructionType switch
+                {
+                    X86Decoder.InstructionType.X87 => LiftX87Instruction(instruction),
+                    X86Decoder.InstructionType.MMX => LiftMMXInstructionX86(instruction),
+                    X86Decoder.InstructionType.SSE => LiftSSEInstructionX86(instruction),
+                    _ => instruction.Mnemonic switch
+                    {
+                        "mov" => LiftMov(instruction),
+                        "add" => LiftAdd(instruction),
+                        "sub" => LiftSub(instruction),
+                        "and" => LiftAnd(instruction),
+                        "or" => LiftOr(instruction),
+                        "xor" => LiftXor(instruction),
+                        "cmp" => LiftCmp(instruction),
+                        "test" => LiftTest(instruction),
+                        "jmp" => LiftJmp(instruction),
+                        "je" or "jz" => LiftConditionalJump(instruction, "je"),
+                        "jne" or "jnz" => LiftConditionalJump(instruction, "jne"),
+                        "ja" or "jnbe" => LiftConditionalJump(instruction, "ja"),
+                        "jae" or "jnb" or "jnc" => LiftConditionalJump(instruction, "jae"),
+                        "jb" or "jnae" or "jc" => LiftConditionalJump(instruction, "jb"),
+                        "jbe" or "jna" => LiftConditionalJump(instruction, "jbe"),
+                        "jg" or "jnle" => LiftConditionalJump(instruction, "jg"),
+                        "jge" or "jnl" => LiftConditionalJump(instruction, "jge"),
+                        "jl" or "jnge" => LiftConditionalJump(instruction, "jl"),
+                        "jle" or "jng" => LiftConditionalJump(instruction, "jle"),
+                        "js" => LiftConditionalJump(instruction, "js"),
+                        "jns" => LiftConditionalJump(instruction, "jns"),
+                        "jo" => LiftConditionalJump(instruction, "jo"),
+                        "jno" => LiftConditionalJump(instruction, "jno"),
+                        "jp" or "jpe" => LiftConditionalJump(instruction, "jp"),
+                        "jnp" or "jpo" => LiftConditionalJump(instruction, "jnp"),
+                        "call" => LiftCall(instruction),
+                        "ret" => LiftRet(instruction),
+                        "push" => LiftPush(instruction),
+                        "pop" => LiftPop(instruction),
+                        "nop" => true, // NOP does nothing
+                        "leave" => LiftLeave(instruction),
+                        "inc" => LiftInc(instruction),
+                        "dec" => LiftDec(instruction),
+                        "neg" => LiftNeg(instruction),
+                        "not" => LiftNot(instruction),
+                        "shl" or "sal" => LiftShift(instruction, "shl"),
+                        "shr" => LiftShift(instruction, "shr"),
+                        "sar" => LiftShift(instruction, "sar"),
+                        "rol" => LiftRotate(instruction, "rol"),
+                        "ror" => LiftRotate(instruction, "ror"),
+                        "rcl" => LiftRotate(instruction, "rcl"),
+                        "rcr" => LiftRotate(instruction, "rcr"),
+                        "imul" => LiftImul(instruction),
+                        "mul" => LiftMul(instruction),
+                        "idiv" => LiftIdiv(instruction),
+                        "div" => LiftDiv(instruction),
+                        "cdq" => LiftCdq(instruction),
+                        "lea" => LiftLea(instruction),
+                        "int" => LiftInt(instruction),
+                        "hlt" => LiftHlt(instruction),
+                        _ => LiftGenericInstruction(instruction)
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error lifting instruction '{instruction.Mnemonic}' at 0x{address:X}: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if instruction terminates a basic block
+        /// </summary>
+        protected override bool IsBasicBlockTerminator(X86Decoder.X86Instruction instruction)
+        {
+            return instruction.Mnemonic switch
+            {
+                "jmp" or "ret" or "call" => true,
+                "je" or "jz" or "jne" or "jnz" or "jl" or "jg" or "jle" or "jge" => true,
+                "int" or "sysenter" or "sysexit" => true,
+                _ => false
+            };
+        }
+
+        #region Instruction Lifting Methods
+        
+        /// <summary>
+        /// Lift MOV instruction
+        /// </summary>
+        private bool LiftMov(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            // Get source expression
+            var srcExpr = OperandToExpression(src);
+            if (srcExpr == null) return false;
+            
+            // Store to destination
+            return StoreToOperand(dest, srcExpr);
+        }
+        
+        /// <summary>
+        /// Lift ADD instruction
+        /// </summary>
+        private bool LiftAdd(X86Decoder.X86Instruction instruction)
+        {
+            return LiftArithmeticInstruction(instruction, IROp.Add32, IROp.Add8);
+        }
+        
+        /// <summary>
+        /// Lift SUB instruction
+        /// </summary>
+        private bool LiftSub(X86Decoder.X86Instruction instruction)
+        {
+            return LiftArithmeticInstruction(instruction, IROp.Sub32, IROp.Sub8);
+        }
+        
+        /// <summary>
+        /// Lift AND instruction
+        /// </summary>
+        private bool LiftAnd(X86Decoder.X86Instruction instruction)
+        {
+            return LiftArithmeticInstruction(instruction, IROp.And32, IROp.And8);
+        }
+        
+        /// <summary>
+        /// Lift OR instruction
+        /// </summary>
+        private bool LiftOr(X86Decoder.X86Instruction instruction)
+        {
+            return LiftArithmeticInstruction(instruction, IROp.Or32, IROp.Or8);
+        }
+        
+        /// <summary>
+        /// Lift XOR instruction
+        /// </summary>
+        private bool LiftXor(X86Decoder.X86Instruction instruction)
+        {
+            return LiftArithmeticInstruction(instruction, IROp.Xor32, IROp.Xor8);
+        }
+        
+        /// <summary>
+        /// Generic arithmetic instruction lifting
+        /// </summary>
+        private bool LiftArithmeticInstruction(X86Decoder.X86Instruction instruction, IROp op32, IROp op8)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            // Get operand expressions
+            var destExpr = OperandToExpression(dest);
+            var srcExpr = OperandToExpression(src);
+            if (destExpr == null || srcExpr == null) return false;
+            
+            // Determine operation size and select appropriate IROp
+            var op = dest.Size == 1 ? op8 : op32;
+            
+            // Create arithmetic expression
+            var resultTemp = NewTemporary(dest.Size == 1 ? IRType.I8 : IRType.I32);
+            var arithExpr = IRExprFactory.Binop(op, destExpr, srcExpr);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, arithExpr));
+            
+            // Store result back to destination
+            bool storeSuccess = StoreToOperand(dest, IRExprFactory.RdTmp(resultTemp));
+            
+            // Update flags (simplified for now)
+            if (storeSuccess)
+            {
+                UpdateArithmeticFlags(resultTemp, dest.Size);
+            }
+            
+            return storeSuccess;
+        }
+        
+        /// <summary>
+        /// Lift CMP instruction (like SUB but doesn't store result)
+        /// </summary>
+        private bool LiftCmp(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var op1 = instruction.Operands[0];
+            var op2 = instruction.Operands[1];
+            
+            var op1Expr = OperandToExpression(op1);
+            var op2Expr = OperandToExpression(op2);
+            if (op1Expr == null || op2Expr == null) return false;
+            
+            // Perform comparison (subtraction)
+            var op = op1.Size == 1 ? IROp.Sub8 : IROp.Sub32;
+            var resultTemp = NewTemporary(op1.Size == 1 ? IRType.I8 : IRType.I32);
+            var cmpExpr = IRExprFactory.Binop(op, op1Expr, op2Expr);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, cmpExpr));
+            
+            // Update flags based on comparison result
+            UpdateArithmeticFlags(resultTemp, op1.Size);
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Lift TEST instruction (like AND but doesn't store result)
+        /// </summary>
+        private bool LiftTest(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var op1 = instruction.Operands[0];
+            var op2 = instruction.Operands[1];
+            
+            var op1Expr = OperandToExpression(op1);
+            var op2Expr = OperandToExpression(op2);
+            if (op1Expr == null || op2Expr == null) return false;
+            
+            // Perform test (logical AND)
+            var op = op1.Size == 1 ? IROp.And8 : IROp.And32;
+            var resultTemp = NewTemporary(op1.Size == 1 ? IRType.I8 : IRType.I32);
+            var testExpr = IRExprFactory.Binop(op, op1Expr, op2Expr);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, testExpr));
+            
+            // Update flags based on test result
+            UpdateLogicalFlags(resultTemp, op1.Size);
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Lift unconditional JMP instruction
+        /// </summary>
+        private bool LiftJmp(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var target = instruction.Operands[0];
+            var targetExpr = OperandToExpression(target);
+            if (targetExpr == null) return false;
+            
+            _irsb.Next = targetExpr;
+            _irsb.JumpKind = IRJumpKind.Boring;
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Lift conditional jump instruction
+        /// </summary>
+        private bool LiftConditionalJump(X86Decoder.X86Instruction instruction, string condition)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var target = instruction.Operands[0];
+            var targetExpr = OperandToExpression(target);
+            if (targetExpr == null) return false;
+            
+            // Create condition expression based on flags
+            var condExpr = CreateConditionExpression(condition);
+            if (condExpr == null) return false;
+            
+            // Add conditional exit
+            var exitStmt = IRStmtFactory.Exit(condExpr, IRJumpKind.Boring, CreateIRConst(IRType.I32, targetExpr), 0);
+            AddStatement(exitStmt);
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Lift RET instruction
+        /// </summary>
+        private bool LiftRet(X86Decoder.X86Instruction instruction)
+        {
+            // Pop return address from stack
+            var espExpr = GetRegisterExpression("ESP");
+            var retAddrExpr = IRExprFactory.LoadLE(IRType.I32, espExpr);
+            
+            // Update ESP (add 4)
+            var newEspTemp = NewTemporary(IRType.I32);
+            var espPlusExpr = IRExprFactory.Binop(IROp.Add32, espExpr, IRExprFactory.U32(4));
+            AddStatement(IRStmtFactory.WrTmp(newEspTemp, espPlusExpr));
+            StoreToRegister("ESP", IRExprFactory.RdTmp(newEspTemp));
+            
+            _irsb.Next = retAddrExpr;
+            _irsb.JumpKind = IRJumpKind.Ret;
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Fallback for unsupported instructions
+        /// </summary>
+        private bool LiftGenericInstruction(X86Decoder.X86Instruction instruction)
+        {
+            // For now, just add an IMark and continue
+            Console.WriteLine($"Warning: Unsupported instruction '{instruction.Mnemonic}' - skipping");
+            return true;
+        }
+        
+        // Core instruction lifter implementations
+        private bool LiftCall(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var target = instruction.Operands[0];
+            var targetExpr = OperandToExpression(target);
+            if (targetExpr == null) return false;
+            
+            // Push return address onto stack
+            var retAddr = IRExprFactory.U32(GetNextInstructionAddress());
+            PushToStack(retAddr);
+            
+            // Jump to target
+            _irsb.Next = targetExpr;
+            _irsb.JumpKind = IRJumpKind.Call;
+            
+            return true;
+        }
+
+        private bool LiftPush(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var src = instruction.Operands[0];
+            var srcExpr = OperandToExpression(src);
+            if (srcExpr == null) return false;
+            
+            return PushToStack(srcExpr);
+        }
+
+        private bool LiftPop(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var dest = instruction.Operands[0];
+            var poppedValue = PopFromStack(GetIRType(dest.Size));
+            if (poppedValue == null) return false;
+            
+            return StoreToOperand(dest, poppedValue);
+        }
+
+        private bool LiftLeave(X86Decoder.X86Instruction instruction)
+        {
+            // LEAVE is equivalent to: MOV ESP, EBP; POP EBP
+            
+            // MOV ESP, EBP
+            var ebpExpr = GetRegisterExpression("EBP");
+            if (ebpExpr == null) return false;
+            
+            if (!StoreToRegister("ESP", ebpExpr)) return false;
+            
+            // POP EBP
+            var poppedValue = PopFromStack(IRType.I32);
+            if (poppedValue == null) return false;
+            
+            return StoreToRegister("EBP", poppedValue);
+        }
+
+        private bool LiftInc(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var operand = instruction.Operands[0];
+            var currentValue = OperandToExpression(operand);
+            if (currentValue == null) return false;
+            
+            // Create increment operation
+            var one = IRExprFactory.U32(1);
+            var resultTemp = NewTemporary(GetIRType(operand.Size));
+            var incExpr = IRExprFactory.Binop(IROp.Add32, currentValue, one);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, incExpr));
+            
+            // Store result
+            bool success = StoreToOperand(operand, IRExprFactory.RdTmp(resultTemp));
+            
+            // Update flags (but not carry flag for INC)
+            if (success) UpdateIncrementFlags(resultTemp, operand.Size);
+            
+            return success;
+        }
+
+        private bool LiftDec(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var operand = instruction.Operands[0];
+            var currentValue = OperandToExpression(operand);
+            if (currentValue == null) return false;
+            
+            // Create decrement operation
+            var one = IRExprFactory.U32(1);
+            var resultTemp = NewTemporary(GetIRType(operand.Size));
+            var decExpr = IRExprFactory.Binop(IROp.Sub32, currentValue, one);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, decExpr));
+            
+            // Store result
+            bool success = StoreToOperand(operand, IRExprFactory.RdTmp(resultTemp));
+            
+            // Update flags (but not carry flag for DEC)
+            if (success) UpdateIncrementFlags(resultTemp, operand.Size);
+            
+            return success;
+        }
+
+        private bool LiftNeg(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var operand = instruction.Operands[0];
+            var currentValue = OperandToExpression(operand);
+            if (currentValue == null) return false;
+            
+            // Create negation operation (0 - value)
+            var zero = IRExprFactory.U32(0);
+            var resultTemp = NewTemporary(GetIRType(operand.Size));
+            var negExpr = IRExprFactory.Binop(IROp.Sub32, zero, currentValue);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, negExpr));
+            
+            // Store result
+            bool success = StoreToOperand(operand, IRExprFactory.RdTmp(resultTemp));
+            
+            // Update flags
+            if (success) UpdateArithmeticFlags(resultTemp, operand.Size);
+            
+            return success;
+        }
+
+        private bool LiftNot(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 1) return false;
+            
+            var operand = instruction.Operands[0];
+            var currentValue = OperandToExpression(operand);
+            if (currentValue == null) return false;
+            
+            // Create bitwise NOT operation
+            var resultTemp = NewTemporary(GetIRType(operand.Size));
+            var notExpr = IRExprFactory.Unop(IROp.Not32, currentValue);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, notExpr));
+            
+            // Store result (NOT doesn't affect flags)
+            return StoreToOperand(operand, IRExprFactory.RdTmp(resultTemp));
+        }
+
+        private bool LiftShift(X86Decoder.X86Instruction instruction, string shiftType)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var count = instruction.Operands[1];
+            
+            var destExpr = OperandToExpression(dest);
+            var countExpr = OperandToExpression(count);
+            if (destExpr == null || countExpr == null) return false;
+            
+            // Select appropriate shift operation
+            var op = shiftType switch
+            {
+                "shl" or "sal" => IROp.Shl32,
+                "shr" => IROp.Shr32,
+                "sar" => IROp.Sar32,
+                _ => IROp.Shl32
+            };
+            
+            var resultTemp = NewTemporary(GetIRType(dest.Size));
+            var shiftExpr = IRExprFactory.Binop(op, destExpr, countExpr);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, shiftExpr));
+            
+            // Store result
+            bool success = StoreToOperand(dest, IRExprFactory.RdTmp(resultTemp));
+            
+            // Update flags
+            if (success) UpdateShiftFlags(resultTemp, dest.Size, countExpr);
+            
+            return success;
+        }
+
+        private bool LiftRotate(X86Decoder.X86Instruction instruction, string rotateType)
+        {
+            // For now, implement rotates as generic instructions
+            // Full rotate implementation would require more complex IR operations
+            return LiftGenericInstruction(instruction);
+        }
+
+        private bool LiftImul(X86Decoder.X86Instruction instruction)
+        {
+            // Signed multiplication - can have 1, 2, or 3 operands
+            return LiftMultiplication(instruction, true);
+        }
+
+        private bool LiftMul(X86Decoder.X86Instruction instruction)
+        {
+            // Unsigned multiplication
+            return LiftMultiplication(instruction, false);
+        }
+
+        private bool LiftIdiv(X86Decoder.X86Instruction instruction)
+        {
+            // Signed division
+            return LiftDivision(instruction, true);
+        }
+
+        private bool LiftDiv(X86Decoder.X86Instruction instruction)
+        {
+            // Unsigned division
+            return LiftDivision(instruction, false);
+        }
+
+        private bool LiftCdq(X86Decoder.X86Instruction instruction)
+        {
+            // CDQ: Convert Doubleword to Quadword (sign extend EAX into EDX:EAX)
+            var eaxExpr = GetRegisterExpression("EAX");
+            if (eaxExpr == null) return false;
+            
+            // Sign extend: EDX = (EAX < 0) ? 0xFFFFFFFF : 0x00000000
+            var zero = IRExprFactory.U32(0);
+            var resultTemp = NewTemporary(IRType.I32);
+            var cmpExpr = IRExprFactory.Binop(IROp.CmpLT32S, eaxExpr, zero);
+            var signExtend = IRExprFactory.ITE(cmpExpr, IRExprFactory.U32(0xFFFFFFFF), zero);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, signExtend));
+            
+            return StoreToRegister("EDX", IRExprFactory.RdTmp(resultTemp));
+        }
+
+        private bool LiftLea(X86Decoder.X86Instruction instruction)
+        {
+            // LEA: Load Effective Address
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (src.Type != X86Decoder.OperandType.Memory) return false;
+            
+            // Calculate effective address (without dereferencing)
+            var addrExpr = CreateMemoryExpression(src.Memory);
+            if (addrExpr == null) return false;
+            
+            // Use temporary variable to match VEX IR pattern expected by tests
+            var resultTemp = NewTemporary(IRType.I32);
+            AddStatement(IRStmtFactory.WrTmp(resultTemp, addrExpr));
+            
+            return StoreToOperand(dest, IRExprFactory.RdTmp(resultTemp));
+        }
+
+        private bool LiftInt(X86Decoder.X86Instruction instruction)
+        {
+            // Software interrupt - for now, treat as generic
+            // Full implementation would need interrupt handling
+            return LiftGenericInstruction(instruction);
+        }
+
+        private bool LiftHlt(X86Decoder.X86Instruction instruction)
+        {
+            // Halt instruction - end execution
+            _irsb.Next = IRExprFactory.U32(0);
+            _irsb.JumpKind = IRJumpKind.Boring; // or could be IRJumpKind.NoRedir
+            return true;
+        }
+        
+        #endregion
+
+        #region Helper Methods
+        
+        /// <summary>
+        /// Convert operand to IR expression
+        /// </summary>
+        private IRExpr? OperandToExpression(X86Decoder.X86Operand operand)
+        {
+            switch (operand.Type)
+            {
+                case X86Decoder.OperandType.Register:
+                    return GetRegisterExpression(MapRegisterName(operand.Register?.ToString() ?? "EAX"));
+                case X86Decoder.OperandType.Immediate:
+                    return IRExprFactory.U32(operand.Immediate);
+                case X86Decoder.OperandType.Memory:
+                    return IRExprFactory.LoadLE(GetIRType(operand.Size), CreateMemoryExpression(operand.Memory) ?? IRExprFactory.U32(0));
+                case X86Decoder.OperandType.MMXRegister:
+                    return GetMMXRegister(operand.MMXRegister);
+                case X86Decoder.OperandType.Relative:
+                    var currentAddress = _baseAddress + (ulong)_position;
+                    var targetAddress = currentAddress + (ulong)(uint)operand.Immediate;
+                    return IRExprFactory.U32((uint)targetAddress);
+                default:
+                    return null;
+            }
+        }
+        
+        /// <summary>
+        /// Store expression to operand
+        /// </summary>
+        private bool StoreToOperand(X86Decoder.X86Operand operand, IRExpr expr)
+        {
+            return operand.Type switch
+            {
+                X86Decoder.OperandType.Register => StoreToRegister(MapRegisterName(operand.Register?.ToString() ?? "EAX"), expr),
+                X86Decoder.OperandType.Memory => StoreToMemory(operand.Memory, expr),
+                X86Decoder.OperandType.MMXRegister => StoreToMMXRegister(operand.MMXRegister, expr),
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// Store to MMX register
+        /// </summary>
+        private bool StoreToMMXRegister(int mmxReg, IRExpr expr)
+        {
+            SetMMXRegister(mmxReg, expr);
+            return true;
+        }
+        
+        /// <summary>
+        /// Get register expression
+        /// </summary>
+        private IRExpr GetRegisterExpression(string registerName)
+        {
+            int offset = _guestState.GetRegisterOffset(registerName);
+            var type = _guestState.GetRegisterType(registerName);
+            return IRExprFactory.Get(offset, type);
+        }
+        
+        /// <summary>
+        /// Store to register
+        /// </summary>
+        private bool StoreToRegister(string registerName, IRExpr expr)
+        {
+            try
+            {
+                int offset = _guestState.GetRegisterOffset(registerName);
+                AddStatement(IRStmtFactory.Put(offset, expr));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Create memory expression
+        /// </summary>
+        private IRExpr? CreateMemoryExpression(X86Decoder.X86MemoryOperand? memory)
+        {
+            if (memory == null) return null;
+            
+            // Start with displacement
+            IRExpr addrExpr = IRExprFactory.U32((uint)memory.Displacement);
+            
+            // Add base register if present
+            if (memory.Base != null)
+            {
+                var baseExpr = GetRegisterExpression(memory.Base.ToString()!);
+                addrExpr = IRExprFactory.Binop(IROp.Add32, addrExpr, baseExpr);
+            }
+            
+            // Add index register with scale if present
+            if (memory.Index != null)
+            {
+                var indexExpr = GetRegisterExpression(memory.Index.ToString()!);
+                if (memory.Scale > 1)
+                {
+                    var scaleExpr = IRExprFactory.U32((uint)memory.Scale);
+                    indexExpr = IRExprFactory.Binop(IROp.Mul32, indexExpr, scaleExpr);
+                }
+                addrExpr = IRExprFactory.Binop(IROp.Add32, addrExpr, indexExpr);
+            }
+            
+            return addrExpr;
+        }
+        
+        /// <summary>
+        /// Store to memory
+        /// </summary>
+        private bool StoreToMemory(X86Decoder.X86MemoryOperand? memory, IRExpr expr)
+        {
+            if (memory == null) return false;
+            
+            var addrExpr = CreateMemoryExpression(memory);
+            if (addrExpr == null) return false;
+            
+            AddStatement(IRStmtFactory.StoreLE(addrExpr, expr));
+            return true;
+        }
+        
+        /// <summary>
+        /// Create constant expression
+        /// </summary>
+        private IRExpr CreateConstantExpression(IRType type, uint value)
+        {
+            return type switch
+            {
+                IRType.I8 => IRExprFactory.U8((byte)value),
+                IRType.I16 => IRExprFactory.U16((ushort)value),
+                IRType.I32 => IRExprFactory.U32(value),
+                IRType.I64 => IRExprFactory.U64(value),
+                _ => throw new ArgumentException($"Unsupported constant type: {type}")
+            };
+        }
+        
+        /// <summary>
+        /// Create constant expression for addresses
+        /// </summary>
+        private IRExpr CreateConstantExpression(IRType type, ulong value)
+        {
+            return type switch
+            {
+                IRType.I32 => IRExprFactory.U32((uint)value),
+                IRType.I64 => IRExprFactory.U64(value),
+                _ => throw new ArgumentException($"Unsupported address type: {type}")
+            };
+        }
+        
+        /// <summary>
+        /// Get IR type from operand size
+        /// </summary>
+        private IRType GetIRType(int size)
+        {
+            return size switch
+            {
+                1 => IRType.I8,
+                2 => IRType.I16,
+                4 => IRType.I32,
+                8 => IRType.I64,
+                _ => throw new ArgumentException($"Unsupported operand size: {size}")
+            };
+        }
+        
+        /// <summary>
+        /// Create new temporary variable
+        /// </summary>
+        private IRTemp NewTemporary(IRType type)
+        {
+            return _typeEnv.NewTemp(type);
+        }
+        
+        /// <summary>
+        /// Add statement to IRSB
+        /// </summary>
+        private void AddStatement(IRStmt stmt)
+        {
+            _irsb.AddStatement(stmt);
+        }
+        
+        /// <summary>
+        /// Update arithmetic flags (simplified implementation)
+        /// </summary>
+        private void UpdateArithmeticFlags(IRTemp resultTemp, int operandSize)
+        {
+            // This is a simplified implementation
+            // In a full implementation, we would calculate all x86 flags properly
+            
+            var resultExpr = IRExprFactory.RdTmp(resultTemp);
+            var zeroExpr = IRExprFactory.U32(0);
+            
+            // Zero flag: result == 0
+            var zfTemp = NewTemporary(IRType.I1);
+            var zfExpr = IRExprFactory.Binop(IROp.CmpEQ32, resultExpr, zeroExpr);
+            AddStatement(IRStmtFactory.WrTmp(zfTemp, zfExpr));
+            
+            // Store zero flag (simplified)
+            StoreToRegister("CC_OP", IRExprFactory.U32(1)); // Simplified CCOp
+            StoreToRegister("CC_DEP1", IRExprFactory.RdTmp(zfTemp));
+        }
+        
+        /// <summary>
+        /// Update logical flags (simplified implementation)
+        /// </summary>
+        private void UpdateLogicalFlags(IRTemp resultTemp, int operandSize)
+        {
+            // Similar to arithmetic flags but for logical operations
+            UpdateArithmeticFlags(resultTemp, operandSize);
+        }
+        
+        /// <summary>
+        /// Create condition expression for conditional jumps
+        /// </summary>
+        private IRExpr? CreateConditionExpression(string condition)
+        {
+            // This is a simplified implementation
+            // In a full implementation, we would properly decode x86 condition codes
+            
+            return condition switch
+            {
+                "je" or "jz" => GetRegisterExpression("CC_DEP1"), // Zero flag
+                "jne" or "jnz" => IRExprFactory.Binop(IROp.CmpEQ32, GetRegisterExpression("CC_DEP1"), IRExprFactory.U32(0)), // Not zero flag (compare to 0)
+                _ => null
+            };
+        }
+        
+        /// <summary>
+        /// Create IRConst from expression for Exit statements
+        /// </summary>
+        private IRConst CreateIRConst(IRType type, IRExpr expr)
+        {
+            // This is a simplified implementation - in reality we'd need to handle this better
+            if (expr is IRExprConst constExpr)
+            {
+                return constExpr.Con;
+            }
+            
+            // Fallback to a default constant
+            return type switch
+            {
+                IRType.I32 => IRConstFactory.U32(0),
+                IRType.I64 => IRConstFactory.U64(0),
+                _ => throw new ArgumentException($"Unsupported type for IRConst: {type}")
+            };
+        }
+
+        #region x87 FPU Support
+
+        /// <summary>
+        /// Lift x87 FPU instruction
+        /// </summary>
+        private bool LiftX87Instruction(X86Decoder.X86Instruction instruction)
+        {
+            return instruction.Mnemonic switch
+            {
+                // Load operations
+                "fld" or "flds" => LiftX87Load(instruction),
+                "fild" => LiftX87IntegerLoad(instruction),
+                
+                // Store operations
+                "fst" or "fsts" => LiftX87Store(instruction, false),
+                "fstp" or "fstps" => LiftX87Store(instruction, true),
+                "fist" => LiftX87IntegerStore(instruction, false),
+                "fistp" => LiftX87IntegerStore(instruction, true),
+                
+                // Arithmetic operations
+                "fadd" or "fadds" => LiftX87Add(instruction),
+                "faddp" => LiftX87AddPop(instruction),
+                "fiadd" => LiftX87IntegerAdd(instruction),
+                "fsub" or "fsubs" => LiftX87Sub(instruction),
+                "fsubp" => LiftX87SubPop(instruction),
+                "fsubr" or "fsubrs" => LiftX87SubReverse(instruction),
+                "fsubrp" => LiftX87SubReversePop(instruction),
+                "fisub" => LiftX87IntegerSub(instruction),
+                "fisubr" => LiftX87IntegerSubReverse(instruction),
+                "fmul" or "fmuls" => LiftX87Mul(instruction),
+                "fmulp" => LiftX87MulPop(instruction),
+                "fimul" => LiftX87IntegerMul(instruction),
+                "fdiv" or "fdivs" => LiftX87Div(instruction),
+                "fdivp" => LiftX87DivPop(instruction),
+                "fdivr" or "fdivrs" => LiftX87DivReverse(instruction),
+                "fdivrp" => LiftX87DivReversePop(instruction),
+                "fidiv" => LiftX87IntegerDiv(instruction),
+                "fidivr" => LiftX87IntegerDivReverse(instruction),
+                
+                // Comparison operations
+                "fcom" or "fcoms" => LiftX87Compare(instruction, false),
+                "fcomp" or "fcomps" => LiftX87Compare(instruction, true),
+                "fcompp" => LiftX87ComparePop2(instruction),
+                "ficom" => LiftX87IntegerCompare(instruction, false),
+                "ficomp" => LiftX87IntegerCompare(instruction, true),
+                "fucom" => LiftX87UnorderedCompare(instruction, false),
+                "fucomp" => LiftX87UnorderedCompare(instruction, true),
+                "fucomi" => LiftX87UnorderedCompareInteger(instruction),
+                "fucomip" => LiftX87UnorderedCompareIntegerPop(instruction),
+                "fcomi" => LiftX87CompareInteger(instruction),
+                "fcomip" => LiftX87CompareIntegerPop(instruction),
+                
+                // Unary operations
+                "fchs" => LiftX87ChangeSign(instruction),
+                "fabs" => LiftX87Absolute(instruction),
+                "fsqrt" => LiftX87SquareRoot(instruction),
+                "frndint" => LiftX87RoundToInteger(instruction),
+                "fscale" => LiftX87Scale(instruction),
+                
+                // Math functions
+                "fsin" => LiftX87Sine(instruction),
+                "fcos" => LiftX87Cosine(instruction),
+                "fsincos" => LiftX87SineCosine(instruction),
+                "fptan" => LiftX87PartialTangent(instruction),
+                "fpatan" => LiftX87PartialArcTangent(instruction),
+                "f2xm1" => LiftX87TwoToXMinusOne(instruction),
+                "fyl2x" => LiftX87YLog2X(instruction),
+                "fyl2xp1" => LiftX87YLog2XPlus1(instruction),
+                "fprem" => LiftX87PartialRemainder(instruction),
+                "fprem1" => LiftX87PartialRemainder1(instruction),
+                "fxtract" => LiftX87ExtractExponentAndSignificand(instruction),
+                
+                // Load constants
+                "fld1" => LiftX87LoadConstant(1.0),
+                "fldz" => LiftX87LoadConstant(0.0),
+                "fldpi" => LiftX87LoadConstant(Math.PI),
+                "fldl2e" => LiftX87LoadConstant(Math.Log2(Math.E)),
+                "fldl2t" => LiftX87LoadConstant(Math.Log2(10.0)),
+                "fldlg2" => LiftX87LoadConstant(Math.Log10(2.0)),
+                "fldln2" => LiftX87LoadConstant(Math.Log(2.0)),
+                
+                // Control operations
+                "finit" or "fninit" => LiftX87Initialize(instruction),
+                "fclex" or "fnclex" => LiftX87ClearExceptions(instruction),
+                "fstcw" or "fnstcw" => LiftX87StoreControlWord(instruction),
+                "fldcw" => LiftX87LoadControlWord(instruction),
+                "fstsw" or "fnstsw" => LiftX87StoreStatusWord(instruction),
+                "fstenv" or "fnstenv" => LiftX87StoreEnvironment(instruction),
+                "fldenv" => LiftX87LoadEnvironment(instruction),
+                "fsave" or "fnsave" => LiftX87SaveState(instruction),
+                "frstor" => LiftX87RestoreState(instruction),
+                
+                // Stack operations
+                "fincstp" => LiftX87IncrementStackPointer(instruction),
+                "fdecstp" => LiftX87DecrementStackPointer(instruction),
+                "fxch" => LiftX87Exchange(instruction),
+                "ffree" => LiftX87FreeRegister(instruction),
+                "ffreep" => LiftX87FreeRegisterPop(instruction),
+                
+                // Test operations
+                "ftst" => LiftX87Test(instruction),
+                "fxam" => LiftX87Examine(instruction),
+                
+                // Legacy operations
+                "feni" => LiftX87EnableInterrupts(instruction),
+                "fdisi" => LiftX87DisableInterrupts(instruction),
+                "fsetpm" => LiftX87SetProtectedMode(instruction),
+                
+                // Binary coded decimal
+                "fbld" => LiftX87LoadBCD(instruction),
+                "fbstp" => LiftX87StoreBCD(instruction),
+                
+                // SSE3 truncate operations
+                "fisttp" => LiftX87TruncateStore(instruction),
+                
+                _ => LiftGenericX87Instruction(instruction)
+            };
+        }
+
+        #region x87 Stack Management
+
+        // x87 register array descriptors (lazy-initialized)
+        private IRRegArray? _x87RegsArray = null;
+        private IRRegArray? _x87TagsArray = null;
+
+        private IRRegArray GetX87RegsArray()
+        {
+            if (_x87RegsArray == null)
+            {
+                var baseOffset = _guestState.GetRegisterOffset("GuestFPReg");
+                _x87RegsArray = IRExprFactory.RegArray(baseOffset, IRType.F64, 8);
+            }
+            return _x87RegsArray;
+        }
+
+        private IRRegArray GetX87TagsArray()
+        {
+            if (_x87TagsArray == null)
+            {
+                var baseOffset = _guestState.GetRegisterOffset("GuestFPTag");
+                _x87TagsArray = IRExprFactory.RegArray(baseOffset, IRType.I8, 8);
+            }
+            return _x87TagsArray;
+        }
+
+        /// <summary>
+        /// Get FTOP (FPU stack top pointer)
+        /// </summary>
+        private IRExpr GetFTop()
+        {
+            var offset = _guestState.GetRegisterOffset("GuestFTop");
+            return IRExprFactory.Get(offset, IRType.I32);
+        }
+
+        /// <summary>
+        /// Set FTOP (FPU stack top pointer)
+        /// </summary>
+        private void SetFTop(IRExpr value)
+        {
+            var offset = _guestState.GetRegisterOffset("GuestFTop");
+            AddStatement(IRStmtFactory.Put(offset, value));
+        }
+
+        /// <summary>
+        /// Get ST register value using proper VEX IR GetI with circular indexing
+        /// </summary>
+        private IRExpr GetSTValue(int stRegister)
+        {
+            // Use GetI for indexed access into x87 register array
+            // FTOP provides the circular stack offset
+            return IRExprFactory.GetI(GetX87RegsArray(), GetFTop(), stRegister);
+        }
+
+        /// <summary>
+        /// Set ST register value using proper VEX IR PutI with circular indexing
+        /// </summary>
+        private void SetSTValue(int stRegister, IRExpr value)
+        {
+            // Mark register as full (tag = 1)
+            SetSTTag(stRegister, 1);
+            
+            // Use PutI for indexed write into x87 register array
+            AddStatement(IRStmtFactory.PutI(GetX87RegsArray(), GetFTop(), stRegister, value));
+        }
+
+        /// <summary>
+        /// Get ST register tag (0=empty, 1=full) using proper VEX IR GetI
+        /// </summary>
+        private IRExpr GetSTTag(int stRegister)
+        {
+            return IRExprFactory.GetI(GetX87TagsArray(), GetFTop(), stRegister);
+        }
+
+        /// <summary>
+        /// Set ST register tag (0=empty, 1=full) using proper VEX IR PutI
+        /// </summary>
+        private void SetSTTag(int stRegister, int tag)
+        {
+            AddStatement(IRStmtFactory.PutI(GetX87TagsArray(), GetFTop(), stRegister, IRExprFactory.U8((byte)tag)));
+        }
+
+        /// <summary>
+        /// Push value onto x87 stack with proper FTOP management
+        /// </summary>
+        private void X87Push(IRExpr value)
+        {
+            // FTOP = (FTOP - 1) & 7 (decrement and wrap)
+            var currentFTop = GetFTop();
+            var newFTop = IRExprFactory.Binop(IROp.And32,
+                IRExprFactory.Binop(IROp.Sub32, currentFTop, IRExprFactory.U32(1)),
+                IRExprFactory.U32(7));
+            
+            SetFTop(newFTop);
+            
+            // Store value to new ST(0) using the updated FTOP
+            SetSTValue(0, value);
+        }
+
+        /// <summary>
+        /// Pop value from x87 stack with proper FTOP management
+        /// </summary>
+        private IRExpr X87Pop()
+        {
+            // Get current ST(0) value before pop
+            var value = GetSTValue(0);
+            
+            // Mark ST(0) as empty (tag = 0)
+            SetSTTag(0, 0);
+            
+            // FTOP = (FTOP + 1) & 7 (increment and wrap)
+            var currentFTop = GetFTop();
+            var newFTop = IRExprFactory.Binop(IROp.And32,
+                IRExprFactory.Binop(IROp.Add32, currentFTop, IRExprFactory.U32(1)),
+                IRExprFactory.U32(7));
+            
+            SetFTop(newFTop);
+            
+            return value;
+        }
+
+        /// <summary>
+        /// Push value onto stack
+        /// </summary>
+        private bool PushToStack(IRExpr value)
+        {
+            // Decrement ESP by 4 (for 32-bit)
+            var espExpr = GetRegisterExpression("ESP");
+            if (espExpr == null) return false;
+            
+            var newEsp = IRExprFactory.Binop(IROp.Sub32, espExpr, IRExprFactory.U32(4));
+            var espTemp = NewTemporary(IRType.I32);
+            AddStatement(IRStmtFactory.WrTmp(espTemp, newEsp));
+            
+            if (!StoreToRegister("ESP", IRExprFactory.RdTmp(espTemp))) return false;
+            
+            // Store value at [ESP]
+            AddStatement(IRStmtFactory.StoreLE(IRExprFactory.RdTmp(espTemp), value));
+            return true;
+        }
+
+        /// <summary>
+        /// Pop value from stack
+        /// </summary>
+        private IRExpr? PopFromStack(IRType valueType)
+        {
+            // Load value from [ESP]
+            var espExpr = GetRegisterExpression("ESP");
+            if (espExpr == null) return null;
+            
+            var valueTemp = NewTemporary(valueType);
+            var loadExpr = IRExprFactory.LoadLE(valueType, espExpr);
+            AddStatement(IRStmtFactory.WrTmp(valueTemp, loadExpr));
+            
+            // Increment ESP by 4 (for 32-bit)
+            var newEsp = IRExprFactory.Binop(IROp.Add32, espExpr, IRExprFactory.U32(4));
+            if (!StoreToRegister("ESP", newEsp)) return null;
+            
+            return IRExprFactory.RdTmp(valueTemp);
+        }
+
+        /// <summary>
+        /// Get next instruction address
+        /// </summary>
+        private uint GetNextInstructionAddress()
+        {
+            // This would typically be current instruction address + instruction length
+            // For now, return a placeholder
+            return (uint)(_baseAddress + (uint)_position + 4); // Assuming 4-byte instruction
+        }
+
+        /// <summary>
+        /// Update flags for increment/decrement (doesn't affect carry flag)
+        /// </summary>
+        private void UpdateIncrementFlags(IRTemp resultTemp, int operandSize)
+        {
+            // INC/DEC update all flags except carry flag
+            var resultExpr = IRExprFactory.RdTmp(resultTemp);
+            var zeroExpr = IRExprFactory.U32(0);
+            
+            // Zero flag: result == 0
+            var zfTemp = NewTemporary(IRType.I1);
+            var zfExpr = IRExprFactory.Binop(IROp.CmpEQ32, resultExpr, zeroExpr);
+            AddStatement(IRStmtFactory.WrTmp(zfTemp, zfExpr));
+            
+            // Store flags (simplified)
+            StoreToRegister("CC_OP", IRExprFactory.U32(2)); // Different CCOp for INC/DEC
+            StoreToRegister("CC_DEP1", IRExprFactory.RdTmp(zfTemp));
+        }
+
+        /// <summary>
+        /// Update flags for shift operations
+        /// </summary>
+        private void UpdateShiftFlags(IRTemp resultTemp, int operandSize, IRExpr countExpr)
+        {
+            // Shift operations update flags based on result and count
+            UpdateArithmeticFlags(resultTemp, operandSize);
+            
+            // Additional shift-specific flag handling would go here
+        }
+
+        /// <summary>
+        /// Handle multiplication operations
+        /// </summary>
+        private bool LiftMultiplication(X86Decoder.X86Instruction instruction, bool signed)
+        {
+            // Simplified multiplication implementation
+            // Full implementation would handle different operand counts and sizes
+            if (instruction.Operands.Count == 1)
+            {
+                // Single operand: AL/AX/EAX * operand -> AH:AL/DX:AX/EDX:EAX
+                var operand = instruction.Operands[0];
+                var operandExpr = OperandToExpression(operand);
+                if (operandExpr == null) return false;
+                
+                var accumulator = GetRegisterExpression("EAX");
+                if (accumulator == null) return false;
+                
+                var op = signed ? IROp.MullS32 : IROp.MullU32;
+                var resultTemp = NewTemporary(IRType.I64);
+                var mulExpr = IRExprFactory.Binop(op, accumulator, operandExpr);
+                AddStatement(IRStmtFactory.WrTmp(resultTemp, mulExpr));
+                
+                // Store low part in EAX, high part in EDX
+                var lowPart = IRExprFactory.Unop(IROp.Iop_64to32, IRExprFactory.RdTmp(resultTemp));
+                var highPart = IRExprFactory.Unop(IROp.Iop_64HIto32, IRExprFactory.RdTmp(resultTemp));
+                
+                bool success = StoreToRegister("EAX", lowPart) && StoreToRegister("EDX", highPart);
+                
+                if (success) UpdateArithmeticFlags(resultTemp, 4);
+                return success;
+            }
+            else if (instruction.Operands.Count == 2)
+            {
+                // Two operand: reg1 = reg1 * operand2 (e.g., IMUL EAX, EBX)
+                var destOperand = instruction.Operands[0];
+                var srcOperand = instruction.Operands[1];
+                
+                var destExpr = OperandToExpression(destOperand);
+                var srcExpr = OperandToExpression(srcOperand);
+                if (destExpr == null || srcExpr == null) return false;
+                
+                // Perform multiplication
+                var op = signed ? IROp.Mul32 : IROp.Mul32; // For two-operand form, result is same size
+                var resultTemp = NewTemporary(IRType.I32);
+                var mulExpr = IRExprFactory.Binop(op, destExpr, srcExpr);
+                AddStatement(IRStmtFactory.WrTmp(resultTemp, mulExpr));
+                
+                // Store result back to destination
+                bool success = StoreToOperand(destOperand, IRExprFactory.RdTmp(resultTemp));
+                
+                if (success) UpdateArithmeticFlags(resultTemp, 4);
+                return success;
+            }
+            
+            return LiftGenericInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Handle division operations
+        /// </summary>
+        private bool LiftDivision(X86Decoder.X86Instruction instruction, bool signed)
+        {
+            // Simplified division implementation
+            // Full implementation would handle EDX:EAX / operand -> EAX (quotient), EDX (remainder)
+            if (instruction.Operands.Count == 1)
+            {
+                var operand = instruction.Operands[0];
+                var operandExpr = OperandToExpression(operand);
+                if (operandExpr == null) return false;
+                
+                // For simplicity, just divide EAX by operand
+                var dividendExpr = GetRegisterExpression("EAX");
+                if (dividendExpr == null) return false;
+                
+                var divOp = signed ? IROp.DivS32 : IROp.DivU32;
+                // For simplicity, don't use DivMod - just calculate remainder separately
+                
+                var quotientTemp = NewTemporary(IRType.I32);
+                var remainderTemp = NewTemporary(IRType.I32);
+                
+                var divExpr = IRExprFactory.Binop(divOp, dividendExpr, operandExpr);
+                AddStatement(IRStmtFactory.WrTmp(quotientTemp, divExpr));
+                
+                // Calculate remainder: dividend - (quotient * divisor)
+                var multExpr = IRExprFactory.Binop(IROp.Mul32, IRExprFactory.RdTmp(quotientTemp), operandExpr);
+                var remExpr = IRExprFactory.Binop(IROp.Sub32, dividendExpr, multExpr);
+                AddStatement(IRStmtFactory.WrTmp(remainderTemp, remExpr));
+                
+                return StoreToRegister("EAX", IRExprFactory.RdTmp(quotientTemp)) && 
+                       StoreToRegister("EDX", IRExprFactory.RdTmp(remainderTemp));
+            }
+            
+            return LiftGenericInstruction(instruction);
+        }
+
+        #endregion
+
+        #region x87 Instruction Implementation
+
+        /// <summary>
+        /// Lift FLD instruction (load floating point)
+        /// </summary>
+        private bool LiftX87Load(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count == 0)
+                return false;
+
+            var operand = instruction.Operands[0];
+            IRExpr value;
+
+            if (operand.Type == X86Decoder.OperandType.STRegister)
+            {
+                // FLD ST(i) - duplicate ST(i) to ST(0)
+                value = GetSTValue(operand.STRegister);
+            }
+            else if (operand.Type == X86Decoder.OperandType.Memory)
+            {
+                // FLD memory - load from memory
+                var addr = OperandToExpression(operand);
+                if (addr == null) return false;
+
+                // Convert based on memory size
+                value = operand.Size switch
+                {
+                    4 => (IRExpr?)IRExprFactory.Unop(IROp.F32toF64, IRExprFactory.Load(IREndness.LE, IRType.F32, addr)), // 32-bit float
+                    8 => (IRExpr?)IRExprFactory.Load(IREndness.LE, IRType.F64, addr), // 64-bit double
+                    10 => (IRExpr?)IRExprFactory.Load(IREndness.LE, IRType.F64, addr), // 80-bit extended (simplified to 64-bit)
+                    _ => (IRExpr?)null
+                };
+
+                if (value == null) return false;
+            }
+            else
+            {
+                return false;
+            }
+
+            X87Push(value);
+            return true;
+        }
+
+        /// <summary>
+        /// Lift FADD instruction
+        /// </summary>
+        private bool LiftX87Add(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count == 0)
+            {
+                // FADD with no operands means FADD ST(1), ST(0)
+                var st0 = GetSTValue(0);
+                var st1 = GetSTValue(1);
+                var result = IRExprFactory.Binop(IROp.AddF64, st1, st0);
+                SetSTValue(1, result);
+                return true;
+            }
+
+            var operand = instruction.Operands[0];
+            
+            if (operand.Type == X86Decoder.OperandType.STRegister)
+            {
+                // FADD ST(i) - ST(0) = ST(0) + ST(i)
+                var st0 = GetSTValue(0);
+                var sti = GetSTValue(operand.STRegister);
+                var result = IRExprFactory.Binop(IROp.AddF64, st0, sti);
+                SetSTValue(0, result);
+                return true;
+            }
+            else if (operand.Type == X86Decoder.OperandType.Memory)
+            {
+                // FADD memory - ST(0) = ST(0) + memory
+                var addr = OperandToExpression(operand);
+                if (addr == null) return false;
+
+                var memValue = operand.Size switch
+                {
+                    4 => (IRExpr?)IRExprFactory.Unop(IROp.F32toF64, IRExprFactory.Load(IREndness.LE, IRType.F32, addr)),
+                    8 => (IRExpr?)IRExprFactory.Load(IREndness.LE, IRType.F64, addr),
+                    _ => (IRExpr?)null
+                };
+
+                if (memValue == null) return false;
+
+                var st0 = GetSTValue(0);
+                var result = IRExprFactory.Binop(IROp.AddF64, st0, memValue);
+                SetSTValue(0, result);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Lift FST instruction (store without pop)
+        /// </summary>
+        private bool LiftX87Store(X86Decoder.X86Instruction instruction, bool pop)
+        {
+            if (instruction.Operands.Count == 0)
+                return false;
+
+            var operand = instruction.Operands[0];
+            var st0 = GetSTValue(0);
+
+            if (operand.Type == X86Decoder.OperandType.STRegister)
+            {
+                // FST ST(i) - copy ST(0) to ST(i)
+                SetSTValue(operand.STRegister, st0);
+            }
+            else if (operand.Type == X86Decoder.OperandType.Memory)
+            {
+                // FST memory - store ST(0) to memory
+                var addr = OperandToExpression(operand);
+                if (addr == null) return false;
+
+                var storeValue = operand.Size switch
+                {
+                    4 => IRExprFactory.Binop(IROp.F64toF32, IRExprFactory.U32(0), st0), // Convert to 32-bit float
+                    8 => st0, // Store as 64-bit double
+                    10 => st0, // Store as 80-bit extended (simplified to 64-bit)
+                    _ => null
+                };
+
+                if (storeValue == null) return false;
+
+                var storeType = operand.Size switch
+                {
+                    4 => IRType.F32,
+                    8 => IRType.F64,
+                    10 => IRType.F64, // Simplified
+                    _ => IRType.Invalid
+                };
+
+                if (storeType == IRType.Invalid) return false;
+
+                AddStatement(IRStmtFactory.Store(IREndness.LE, addr, storeValue));
+            }
+            else
+            {
+                return false;
+            }
+
+            if (pop)
+            {
+                X87Pop();
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Generic handler for unsupported x87 instructions
+        /// </summary>
+        private bool LiftGenericX87Instruction(X86Decoder.X86Instruction instruction)
+        {
+            // For now, just add a comment and continue
+            // In a real implementation, we'd use dirty helpers
+            Console.WriteLine($"Unsupported x87 instruction: {instruction.Mnemonic}");
+            return true;
+        }
+
+        // TODO: Implement remaining x87 instruction lifting methods
+        // This is a foundation - we'll add more as needed
+
+        private bool LiftX87IntegerLoad(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerStore(X86Decoder.X86Instruction instruction, bool pop) 
+        {
+            // TODO: Implement proper integer store with pop flag
+            return LiftGenericX87Instruction(instruction);
+        }
+        private bool LiftX87AddPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerAdd(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Sub(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SubPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SubReverse(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SubReversePop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerSub(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerSubReverse(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Mul(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87MulPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerMul(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Div(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87DivPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87DivReverse(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87DivReversePop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerDiv(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerDivReverse(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Compare(X86Decoder.X86Instruction instruction, bool pop) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87ComparePop2(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IntegerCompare(X86Decoder.X86Instruction instruction, bool pop) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87UnorderedCompare(X86Decoder.X86Instruction instruction, bool pop) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87UnorderedCompareInteger(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87UnorderedCompareIntegerPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87CompareInteger(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87CompareIntegerPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87ChangeSign(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Absolute(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SquareRoot(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87RoundToInteger(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Scale(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Sine(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Cosine(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SineCosine(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87PartialTangent(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87PartialArcTangent(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87TwoToXMinusOne(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87YLog2X(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87YLog2XPlus1(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87PartialRemainder(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87PartialRemainder1(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87ExtractExponentAndSignificand(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87LoadConstant(double constant) => LiftGenericX87Instruction(new X86Decoder.X86Instruction());
+        private bool LiftX87Initialize(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87ClearExceptions(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87StoreControlWord(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87LoadControlWord(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87StoreStatusWord(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87StoreEnvironment(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87LoadEnvironment(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SaveState(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87RestoreState(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87IncrementStackPointer(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87DecrementStackPointer(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Exchange(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87FreeRegister(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87FreeRegisterPop(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Test(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87Examine(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87EnableInterrupts(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87DisableInterrupts(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87SetProtectedMode(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87LoadBCD(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87StoreBCD(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+        private bool LiftX87TruncateStore(X86Decoder.X86Instruction instruction) => LiftGenericX87Instruction(instruction);
+
+        #endregion
+
+        #region Processor Extension Adapter Methods
+
+        /// <summary>
+        /// Adapter method to convert X86Decoder instruction to shared MMX lifting
+        /// </summary>
+        private bool LiftMMXInstructionX86(X86Decoder.X86Instruction instruction)
+        {
+            // Convert X86Decoder instruction to generic operand array and call shared method
+            var operands = ConvertX86OperandsToGeneric(instruction.Operands.ToArray());
+            var irsb = GetCurrentIRSB(); // Now properly returns the current IRSB
+            
+            Console.WriteLine($"X86 MMX Instruction: {instruction.Mnemonic} - delegating to shared base class");
+            return _processorExtensions.LiftMMXInstruction(instruction.Mnemonic.ToLower(), operands.ToArray(), irsb);
+        }
+
+        /// <summary>
+        /// Adapter method to convert X86Decoder instruction to shared SSE lifting
+        /// </summary>
+        private bool LiftSSEInstructionX86(X86Decoder.X86Instruction instruction)
+        {
+            // Convert X86Decoder instruction to generic operand array and call shared method
+            var operands = ConvertX86OperandsToGeneric(instruction.Operands.ToArray());
+            var irsb = GetCurrentIRSB(); // Now properly returns the current IRSB
+            
+            Console.WriteLine($"X86 SSE Instruction: {instruction.Mnemonic} - delegating to shared base class");
+            return _processorExtensions.LiftSSEInstruction(instruction.Mnemonic.ToLower(), operands.ToArray(), irsb);
+        }
+
+        /// <summary>
+        /// Convert X86Decoder operands to generic object array for shared processing
+        /// </summary>
+        private object[] ConvertX86OperandsToGeneric(object[] x86Operands)
+        {
+            // TODO: Implement proper conversion from X86Decoder operands to generic format
+            // For now, just pass through - this will need proper implementation
+            return x86Operands;
+        }
+
+        /// <summary>
+        /// Get current IRSB for shared processor extension methods
+        /// </summary>
+        private IRSB GetCurrentIRSB()
+        {
+            // Access the IRSB from the base class - this is available during instruction lifting
+            return _irsb;
+        }
+
+        #endregion
+
+        #region MMX Instruction Lifting
+
+        /// <summary>
+        /// Lift MMX instruction
+        /// </summary>
+        private bool LiftMMXInstruction(X86Decoder.X86Instruction instruction)
+        {
+            return instruction.Mnemonic switch
+            {
+                // Data transfer
+                "movd" => LiftMMXMovD(instruction),
+                "movq" => LiftMMXMovQ(instruction),
+                
+                // Arithmetic operations
+                "paddb" => LiftMMXAdd(instruction, 1), // Byte add
+                "paddw" => LiftMMXAdd(instruction, 2), // Word add
+                "paddd" => LiftMMXAdd(instruction, 4), // Dword add
+                "psubb" => LiftMMXSub(instruction, 1), // Byte subtract
+                "psubw" => LiftMMXSub(instruction, 2), // Word subtract
+                "psubd" => LiftMMXSub(instruction, 4), // Dword subtract
+                "paddsb" => LiftMMXAddSaturated(instruction, 1, true),   // Signed byte add with saturation
+                "paddsw" => LiftMMXAddSaturated(instruction, 2, true),   // Signed word add with saturation
+                "paddusb" => LiftMMXAddSaturated(instruction, 1, false), // Unsigned byte add with saturation
+                "paddusw" => LiftMMXAddSaturated(instruction, 2, false), // Unsigned word add with saturation
+                "psubsb" => LiftMMXSubSaturated(instruction, 1, true),   // Signed byte subtract with saturation
+                "psubsw" => LiftMMXSubSaturated(instruction, 2, true),   // Signed word subtract with saturation
+                "psubusb" => LiftMMXSubSaturated(instruction, 1, false), // Unsigned byte subtract with saturation
+                "psubusw" => LiftMMXSubSaturated(instruction, 2, false), // Unsigned word subtract with saturation
+                "pmullw" => LiftMMXMultiply(instruction, 2, false), // Word multiply low
+                "pmulhw" => LiftMMXMultiply(instruction, 2, true),  // Word multiply high
+                "pmaddwd" => LiftMMXMultiplyAdd(instruction),       // Word multiply and add to dword
+                
+                // Logical operations
+                "pand" => LiftMMXAnd(instruction),
+                "por" => LiftMMXOr(instruction),
+                "pxor" => LiftMMXXor(instruction),
+                "pandn" => LiftMMXAndNot(instruction),
+                
+                // Comparison operations
+                "pcmpeqb" => LiftMMXCompare(instruction, 1, "eq"), // Byte equal
+                "pcmpeqw" => LiftMMXCompare(instruction, 2, "eq"), // Word equal
+                "pcmpeqd" => LiftMMXCompare(instruction, 4, "eq"), // Dword equal
+                "pcmpgtb" => LiftMMXCompare(instruction, 1, "gt"), // Byte greater than (signed)
+                "pcmpgtw" => LiftMMXCompare(instruction, 2, "gt"), // Word greater than (signed)
+                "pcmpgtd" => LiftMMXCompare(instruction, 4, "gt"), // Dword greater than (signed)
+                
+                // Shift operations
+                "psllw" => LiftMMXShift(instruction, 2, "left"),  // Word left shift
+                "pslld" => LiftMMXShift(instruction, 4, "left"),  // Dword left shift
+                "psllq" => LiftMMXShift(instruction, 8, "left"),  // Qword left shift
+                "psrlw" => LiftMMXShift(instruction, 2, "right"), // Word logical right shift
+                "psrld" => LiftMMXShift(instruction, 4, "right"), // Dword logical right shift
+                "psrlq" => LiftMMXShift(instruction, 8, "right"), // Qword logical right shift
+                "psraw" => LiftMMXShift(instruction, 2, "aright"), // Word arithmetic right shift
+                "psrad" => LiftMMXShift(instruction, 4, "aright"), // Dword arithmetic right shift
+                
+                // Pack operations
+                "packsswb" => LiftMMXPack(instruction, 2, 1, true),  // Pack word to byte with signed saturation
+                "packssdw" => LiftMMXPack(instruction, 4, 2, true),  // Pack dword to word with signed saturation
+                "packuswb" => LiftMMXPack(instruction, 2, 1, false), // Pack word to byte with unsigned saturation
+                
+                // Unpack operations
+                "punpcklbw" => LiftMMXUnpack(instruction, 1, false), // Unpack low bytes to words
+                "punpcklwd" => LiftMMXUnpack(instruction, 2, false), // Unpack low words to dwords
+                "punpckldq" => LiftMMXUnpack(instruction, 4, false), // Unpack low dwords to qwords
+                "punpckhbw" => LiftMMXUnpack(instruction, 1, true),  // Unpack high bytes to words
+                "punpckhwd" => LiftMMXUnpack(instruction, 2, true),  // Unpack high words to dwords
+                "punpckhdq" => LiftMMXUnpack(instruction, 4, true),  // Unpack high dwords to qwords
+                
+                // Control
+                "emms" => LiftMMXEmptyState(instruction),
+                
+                _ => LiftGenericMMXInstruction(instruction)
+            };
+        }
+
+        /// <summary>
+        /// Get MMX register value as 64-bit expression
+        /// MMX registers alias with x87 ST registers
+        /// </summary>
+        private IRExpr GetMMXRegister(int mmxReg)
+        {
+            // MMX registers MM0-MM7 alias with x87 ST0-ST7
+            return GetSTValue(mmxReg);
+        }
+
+        /// <summary>
+        /// Set MMX register value from 64-bit expression
+        /// MMX registers alias with x87 ST registers
+        /// </summary>
+        private void SetMMXRegister(int mmxReg, IRExpr value)
+        {
+            // MMX registers MM0-MM7 alias with x87 ST0-ST7
+            SetSTValue(mmxReg, value);
+            
+            // Using MMX invalidates x87 state (but we don't need to implement that here)
+        }
+
+        /// <summary>
+        /// Lift MOVD instruction (move dword to/from MMX register)
+        /// </summary>
+        private bool LiftMMXMovD(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type == X86Decoder.OperandType.MMXRegister)
+            {
+                // MOVD mm, r/m32 - load 32-bit value into low 32 bits, zero high 32 bits
+                var srcExpr = OperandToExpression(src);
+                if (srcExpr == null) return false;
+                
+                // Extend to 64 bits with zero extension
+                var extendedExpr = IRExprFactory.Unop(IROp.Iop_32Uto64, srcExpr);
+                SetMMXRegister(dest.MMXRegister, extendedExpr);
+            }
+            else if (src.Type == X86Decoder.OperandType.MMXRegister)
+            {
+                // MOVD r/m32, mm - store low 32 bits of MMX register
+                var mmxValue = GetMMXRegister(src.MMXRegister);
+                var lowBits = IRExprFactory.Unop(IROp.Iop_64to32, mmxValue);
+                return StoreToOperand(dest, lowBits);
+            }
+            else
+            {
+                return false;
+            }
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MOVQ instruction (move qword to/from MMX register)
+        /// </summary>
+        private bool LiftMMXMovQ(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type == X86Decoder.OperandType.MMXRegister)
+            {
+                // MOVQ mm, mm/m64 - move 64-bit value
+                var srcExpr = OperandToExpression(src);
+                if (srcExpr == null) return false;
+                
+                SetMMXRegister(dest.MMXRegister, srcExpr);
+            }
+            else if (src.Type == X86Decoder.OperandType.MMXRegister)
+            {
+                // MOVQ mm/m64, mm - store 64-bit value
+                var mmxValue = GetMMXRegister(src.MMXRegister);
+                return StoreToOperand(dest, mmxValue);
+            }
+            else
+            {
+                return false;
+            }
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MMX addition (PADDB, PADDW, PADDD)
+        /// </summary>
+        private bool LiftMMXAdd(X86Decoder.X86Instruction instruction, int elementSize)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            // Create SIMD addition
+            var resultExpr = CreateSIMDAdd(destValue, srcValue, elementSize);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MMX subtraction (PSUBB, PSUBW, PSUBD)
+        /// </summary>
+        private bool LiftMMXSub(X86Decoder.X86Instruction instruction, int elementSize)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            // Create SIMD subtraction
+            var resultExpr = CreateSIMDSub(destValue, srcValue, elementSize);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Create SIMD addition expression for given element size
+        /// </summary>
+        private IRExpr CreateSIMDAdd(IRExpr left, IRExpr right, int elementSize)
+        {
+            // For now, use scalar 64-bit operations since we don't have MMX-specific SIMD ops
+            // In a full VEX implementation, there would be specific MMX vector operations
+            return IRExprFactory.Binop(IROp.Add64, left, right);
+        }
+
+        /// <summary>
+        /// Create SIMD subtraction expression for given element size
+        /// </summary>
+        private IRExpr CreateSIMDSub(IRExpr left, IRExpr right, int elementSize)
+        {
+            // For now, use scalar 64-bit operations since we don't have MMX-specific SIMD ops
+            // In a full VEX implementation, there would be specific MMX vector operations
+            return IRExprFactory.Binop(IROp.Sub64, left, right);
+        }
+
+        /// <summary>
+        /// Lift MMX logical AND (PAND)
+        /// </summary>
+        private bool LiftMMXAnd(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            var resultExpr = IRExprFactory.Binop(IROp.And64, destValue, srcValue);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MMX logical OR (POR)
+        /// </summary>
+        private bool LiftMMXOr(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            var resultExpr = IRExprFactory.Binop(IROp.Or64, destValue, srcValue);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MMX logical XOR (PXOR)
+        /// </summary>
+        private bool LiftMMXXor(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            var resultExpr = IRExprFactory.Binop(IROp.Xor64, destValue, srcValue);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift MMX logical AND NOT (PANDN)
+        /// </summary>
+        private bool LiftMMXAndNot(X86Decoder.X86Instruction instruction)
+        {
+            if (instruction.Operands.Count != 2) return false;
+            
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+            
+            if (dest.Type != X86Decoder.OperandType.MMXRegister) return false;
+            
+            var destValue = GetMMXRegister(dest.MMXRegister);
+            var srcValue = OperandToExpression(src);
+            if (srcValue == null) return false;
+            
+            // PANDN performs: dest = (~dest) & src
+            var notDest = IRExprFactory.Unop(IROp.Not64, destValue);
+            var resultExpr = IRExprFactory.Binop(IROp.And64, notDest, srcValue);
+            SetMMXRegister(dest.MMXRegister, resultExpr);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Lift EMMS instruction (empty MMX state)
+        /// </summary>
+        private bool LiftMMXEmptyState(X86Decoder.X86Instruction instruction)
+        {
+            // EMMS marks all x87/MMX registers as empty
+            // For simplicity, we'll just set x87 tag word to indicate all empty
+            var tagExpr = IRExprFactory.U16(0xFFFF); // All tags = 11 (empty)
+            int offset = _guestState.GetRegisterOffset("FTAG");
+            AddStatement(IRStmtFactory.Put(offset, tagExpr));
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Generic MMX instruction handler for unimplemented instructions
+        /// </summary>
+        private bool LiftGenericMMXInstruction(X86Decoder.X86Instruction instruction)
+        {
+            // For now, implement as NOP with dirty helper call
+            var tmp = _typeEnv.NewTemp(IRType.I64);
+            var callTarget = new IRCallTarget(0, "x86g_dirtyhelper_MMX", IntPtr.Zero);
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                new[] { IRExprFactory.U32((uint)instruction.Opcode) },
+                tmp,
+                IRType.I64
+            ));
+
+            return true;
+        }
+
+        // Placeholder methods for complex MMX operations
+        private bool LiftMMXAddSaturated(X86Decoder.X86Instruction instruction, int elementSize, bool signed) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXSubSaturated(X86Decoder.X86Instruction instruction, int elementSize, bool signed) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXMultiply(X86Decoder.X86Instruction instruction, int elementSize, bool high) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXMultiplyAdd(X86Decoder.X86Instruction instruction) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXCompare(X86Decoder.X86Instruction instruction, int elementSize, string compareType) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXShift(X86Decoder.X86Instruction instruction, int elementSize, string shiftDirection) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXPack(X86Decoder.X86Instruction instruction, int srcSize, int destSize, bool signed) => LiftGenericMMXInstruction(instruction);
+        private bool LiftMMXUnpack(X86Decoder.X86Instruction instruction, int elementSize, bool high) => LiftGenericMMXInstruction(instruction);
+
+        #endregion
+
+        #endregion
+
+        #region SSE Instruction Lifting
+
+        /// <summary>
+        /// Lift SSE (Streaming SIMD Extensions) instructions
+        /// </summary>
+        private bool LiftSSEInstruction(X86Decoder.X86Instruction instruction)
+        {
+            // Handle AVX instructions (VEX-encoded)
+            if (instruction.HasVEXPrefix)
+            {
+                return LiftAVXInstruction(instruction);
+            }
+            
+            // Handle AVX-512 instructions (EVEX-encoded)
+            if (instruction.HasEVEXPrefix)
+            {
+                return LiftAVX512Instruction(instruction);
+            }
+            
+            return instruction.Mnemonic switch
+            {
+                // Data movement instructions - SSE1/SSE2
+                "movups" => LiftSSEMove(instruction, false), // Unaligned packed single
+                "movaps" => LiftSSEMove(instruction, true),  // Aligned packed single
+                "movupd" => LiftSSEMove(instruction, false), // SSE2: Unaligned packed double
+                "movapd" => LiftSSEMove(instruction, true),  // SSE2: Aligned packed double
+                "movlps" => LiftSSEMoveLowPacked(instruction),
+                "movhps" => LiftSSEMoveHighPacked(instruction),
+                "movlpd" => LiftSSEMoveLowPacked(instruction), // SSE2
+                "movhpd" => LiftSSEMoveHighPacked(instruction), // SSE2
+                "movss" => LiftSSEMoveScalar(instruction),
+                "movsd" => LiftSSEMoveScalar(instruction), // SSE2
+                "movntps" => LiftSSEMoveNonTemporal(instruction),
+                "movntpd" => LiftSSEMoveNonTemporal(instruction), // SSE2
+                "movdqa" => LiftSSEMove(instruction, true),  // SSE2: Aligned 128-bit integer
+                "movdqu" => LiftSSEMove(instruction, false), // SSE2: Unaligned 128-bit integer
+                "movq" => LiftSSEMoveQuadword(instruction),   // SSE2
+                "movd" => LiftSSEMoveDoubleword(instruction), // SSE2
+                "movsldup" => LiftSSEMoveDuplicate(instruction), // SSE3
+                "movshdup" => LiftSSEMoveDuplicate(instruction), // SSE3  
+                "movddup" => LiftSSEMoveDuplicate(instruction),  // SSE3
+                
+                // Arithmetic instructions - packed single precision
+                "addps" => LiftSSEArithmetic(instruction, "addps", 4),
+                "subps" => LiftSSEArithmetic(instruction, "subps", 4),
+                "mulps" => LiftSSEArithmetic(instruction, "mulps", 4),
+                "divps" => LiftSSEArithmetic(instruction, "divps", 4),
+                "sqrtps" => LiftSSEArithmetic(instruction, "sqrtps", 4),
+                "rsqrtps" => LiftSSEArithmetic(instruction, "rsqrtps", 4),
+                "rcpps" => LiftSSEArithmetic(instruction, "rcpps", 4),
+                "maxps" => LiftSSEArithmetic(instruction, "maxps", 4),
+                "minps" => LiftSSEArithmetic(instruction, "minps", 4),
+                
+                // Arithmetic instructions - packed double precision (SSE2)
+                "addpd" => LiftSSEArithmetic(instruction, "addpd", 2),
+                "subpd" => LiftSSEArithmetic(instruction, "subpd", 2),
+                "mulpd" => LiftSSEArithmetic(instruction, "mulpd", 2),
+                "divpd" => LiftSSEArithmetic(instruction, "divpd", 2),
+                "sqrtpd" => LiftSSEArithmetic(instruction, "sqrtpd", 2),
+                "maxpd" => LiftSSEArithmetic(instruction, "maxpd", 2),
+                "minpd" => LiftSSEArithmetic(instruction, "minpd", 2),
+                
+                // Arithmetic instructions - scalar single precision
+                "addss" => LiftSSEArithmetic(instruction, "addss", 1),
+                "subss" => LiftSSEArithmetic(instruction, "subss", 1),
+                "mulss" => LiftSSEArithmetic(instruction, "mulss", 1),
+                "divss" => LiftSSEArithmetic(instruction, "divss", 1),
+                "sqrtss" => LiftSSEArithmetic(instruction, "sqrtss", 1),
+                "rsqrtss" => LiftSSEArithmetic(instruction, "rsqrtss", 1),
+                "rcpss" => LiftSSEArithmetic(instruction, "rcpss", 1),
+                "maxss" => LiftSSEArithmetic(instruction, "maxss", 1),
+                "minss" => LiftSSEArithmetic(instruction, "minss", 1),
+                
+                // Arithmetic instructions - scalar double precision (SSE2)
+                "addsd" => LiftSSEArithmetic(instruction, "addsd", 1),
+                "subsd" => LiftSSEArithmetic(instruction, "subsd", 1),
+                "mulsd" => LiftSSEArithmetic(instruction, "mulsd", 1),
+                "divsd" => LiftSSEArithmetic(instruction, "divsd", 1),
+                "sqrtsd" => LiftSSEArithmetic(instruction, "sqrtsd", 1),
+                "maxsd" => LiftSSEArithmetic(instruction, "maxsd", 1),
+                "minsd" => LiftSSEArithmetic(instruction, "minsd", 1),
+                
+                // SSE3 horizontal operations
+                "haddps" => LiftSSEHorizontal(instruction, "hadd", 4),
+                "hsubps" => LiftSSEHorizontal(instruction, "hsub", 4),
+                "haddpd" => LiftSSEHorizontal(instruction, "hadd", 2),
+                "hsubpd" => LiftSSEHorizontal(instruction, "hsub", 2),
+                "addsubps" => LiftSSEAddSub(instruction, 4),
+                "addsubpd" => LiftSSEAddSub(instruction, 2),
+                
+                // Logical instructions
+                "andps" => LiftSSELogical(instruction, "and"),
+                "andnps" => LiftSSELogical(instruction, "andnot"),
+                "orps" => LiftSSELogical(instruction, "or"),
+                "xorps" => LiftSSELogical(instruction, "xor"),
+                "andpd" => LiftSSELogical(instruction, "and"), // SSE2
+                "andnpd" => LiftSSELogical(instruction, "andnot"), // SSE2
+                "orpd" => LiftSSELogical(instruction, "or"), // SSE2
+                "xorpd" => LiftSSELogical(instruction, "xor"), // SSE2
+                
+                // Integer logical instructions (SSE2)
+                "pand" => LiftSSELogical(instruction, "and"),
+                "pandn" => LiftSSELogical(instruction, "andnot"),
+                "por" => LiftSSELogical(instruction, "or"),
+                "pxor" => LiftSSELogical(instruction, "xor"),
+                
+                // Comparison instructions
+                "cmpps" => LiftSSECompare(instruction, 4),
+                "cmpss" => LiftSSECompare(instruction, 1),
+                "cmppd" => LiftSSECompare(instruction, 2), // SSE2
+                "cmpsd" => LiftSSECompare(instruction, 1), // SSE2
+                "comiss" => LiftSSECompareScalar(instruction, false),
+                "ucomiss" => LiftSSECompareScalar(instruction, true),
+                "comisd" => LiftSSECompareScalar(instruction, false), // SSE2
+                "ucomisd" => LiftSSECompareScalar(instruction, true), // SSE2
+                
+                // Integer comparison instructions (SSE2)
+                "pcmpeqb" => LiftSSEIntegerCompare(instruction, "eq", 16),
+                "pcmpeqw" => LiftSSEIntegerCompare(instruction, "eq", 8),
+                "pcmpeqd" => LiftSSEIntegerCompare(instruction, "eq", 4),
+                "pcmpgtb" => LiftSSEIntegerCompare(instruction, "gt", 16),
+                "pcmpgtw" => LiftSSEIntegerCompare(instruction, "gt", 8),
+                "pcmpgtd" => LiftSSEIntegerCompare(instruction, "gt", 4),
+                
+                // Conversion instructions
+                "cvtps2pi" => LiftSSEConvert(instruction, "ps2pi"),
+                "cvtpi2ps" => LiftSSEConvert(instruction, "pi2ps"),
+                "cvtss2si" => LiftSSEConvert(instruction, "ss2si"),
+                "cvtsi2ss" => LiftSSEConvert(instruction, "si2ss"),
+                "cvttps2pi" => LiftSSEConvert(instruction, "ttps2pi"),
+                "cvttss2si" => LiftSSEConvert(instruction, "ttss2si"),
+                "cvtps2pd" => LiftSSEConvert(instruction, "ps2pd"), // SSE2
+                "cvtpd2ps" => LiftSSEConvert(instruction, "pd2ps"), // SSE2
+                "cvtss2sd" => LiftSSEConvert(instruction, "ss2sd"), // SSE2
+                "cvtsd2ss" => LiftSSEConvert(instruction, "sd2ss"), // SSE2
+                "cvtsi2sd" => LiftSSEConvert(instruction, "si2sd"), // SSE2
+                "cvtsd2si" => LiftSSEConvert(instruction, "sd2si"), // SSE2
+                "cvttsd2si" => LiftSSEConvert(instruction, "ttsd2si"), // SSE2
+                "cvtdq2ps" => LiftSSEConvert(instruction, "dq2ps"), // SSE2
+                "cvtps2dq" => LiftSSEConvert(instruction, "ps2dq"), // SSE2
+                "cvttps2dq" => LiftSSEConvert(instruction, "ttps2dq"), // SSE2
+                "cvtdq2pd" => LiftSSEConvert(instruction, "dq2pd"), // SSE2
+                "cvtpd2dq" => LiftSSEConvert(instruction, "pd2dq"), // SSE2
+                "cvttpd2dq" => LiftSSEConvert(instruction, "ttpd2dq"), // SSE2
+                
+                // Shuffle/unpack instructions
+                "shufps" => LiftSSEShuffle(instruction),
+                "shufpd" => LiftSSEShuffle(instruction), // SSE2
+                "unpckhps" => LiftSSEUnpack(instruction, true),  // High
+                "unpcklps" => LiftSSEUnpack(instruction, false), // Low
+                "unpckhpd" => LiftSSEUnpack(instruction, true),  // SSE2 High
+                "unpcklpd" => LiftSSEUnpack(instruction, false), // SSE2 Low
+                
+                // Integer shuffle/unpack/pack instructions (SSE2)
+                "punpcklbw" => LiftSSEIntegerUnpack(instruction, false, 16),
+                "punpcklwd" => LiftSSEIntegerUnpack(instruction, false, 8),
+                "punpckldq" => LiftSSEIntegerUnpack(instruction, false, 4),
+                "punpcklqdq" => LiftSSEIntegerUnpack(instruction, false, 2), // SSE2
+                "punpckhbw" => LiftSSEIntegerUnpack(instruction, true, 16),
+                "punpckhwd" => LiftSSEIntegerUnpack(instruction, true, 8),
+                "punpckhdq" => LiftSSEIntegerUnpack(instruction, true, 4),
+                "punpckhqdq" => LiftSSEIntegerUnpack(instruction, true, 2), // SSE2
+                "packsswb" => LiftSSEPack(instruction, 16, true),
+                "packssdw" => LiftSSEPack(instruction, 8, true),
+                "packuswb" => LiftSSEPack(instruction, 16, false),
+                "pshufw" => LiftSSEShuffle(instruction), // MMX
+                "pshufd" => LiftSSEShuffle(instruction), // SSE2
+                "pshufhw" => LiftSSEShuffle(instruction), // SSE2
+                "pshuflw" => LiftSSEShuffle(instruction), // SSE2
+                
+                // Integer arithmetic instructions (SSE2)
+                "paddb" => LiftSSEIntegerArithmetic(instruction, "add", 16),
+                "paddw" => LiftSSEIntegerArithmetic(instruction, "add", 8),
+                "paddd" => LiftSSEIntegerArithmetic(instruction, "add", 4),
+                "paddq" => LiftSSEIntegerArithmetic(instruction, "add", 2), // SSE2
+                "psubb" => LiftSSEIntegerArithmetic(instruction, "sub", 16),
+                "psubw" => LiftSSEIntegerArithmetic(instruction, "sub", 8),
+                "psubd" => LiftSSEIntegerArithmetic(instruction, "sub", 4),
+                "psubq" => LiftSSEIntegerArithmetic(instruction, "sub", 2), // SSE2
+                "pmullw" => LiftSSEIntegerArithmetic(instruction, "mull", 8),
+                "pmulhw" => LiftSSEIntegerArithmetic(instruction, "mulh", 8),
+                "pmulhuw" => LiftSSEIntegerArithmetic(instruction, "mulhu", 8), // SSE2
+                "pmuludq" => LiftSSEIntegerArithmetic(instruction, "muludq", 2), // SSE2
+                "pmaddwd" => LiftSSEIntegerArithmetic(instruction, "maddwd", 8),
+                "psadbw" => LiftSSEIntegerArithmetic(instruction, "sadbw", 16), // SSE2
+                
+                // Integer saturated arithmetic (SSE2)
+                "paddsb" => LiftSSEIntegerArithmetic(instruction, "adds", 16),
+                "paddsw" => LiftSSEIntegerArithmetic(instruction, "adds", 8),
+                "paddusb" => LiftSSEIntegerArithmetic(instruction, "addus", 16),
+                "paddusw" => LiftSSEIntegerArithmetic(instruction, "addus", 8),
+                "psubsb" => LiftSSEIntegerArithmetic(instruction, "subs", 16),
+                "psubsw" => LiftSSEIntegerArithmetic(instruction, "subs", 8),
+                "psubusb" => LiftSSEIntegerArithmetic(instruction, "subus", 16),
+                "psubusw" => LiftSSEIntegerArithmetic(instruction, "subus", 8),
+                
+                // Integer min/max (SSE2)
+                "pminub" => LiftSSEIntegerMinMax(instruction, "min", 16, false),
+                "pmaxub" => LiftSSEIntegerMinMax(instruction, "max", 16, false),
+                "pminsw" => LiftSSEIntegerMinMax(instruction, "min", 8, true),
+                "pmaxsw" => LiftSSEIntegerMinMax(instruction, "max", 8, true),
+                "pavgb" => LiftSSEIntegerAverage(instruction, 16), // SSE2
+                "pavgw" => LiftSSEIntegerAverage(instruction, 8), // SSE2
+                
+                // Shift instructions (SSE2)
+                "psrlw" => LiftSSEShift(instruction, "srl", 8),
+                "psrld" => LiftSSEShift(instruction, "srl", 4),
+                "psrlq" => LiftSSEShift(instruction, "srl", 2),
+                "psrldq" => LiftSSEShift(instruction, "srldq", 1), // SSE2
+                "psllw" => LiftSSEShift(instruction, "sll", 8),
+                "pslld" => LiftSSEShift(instruction, "sll", 4),
+                "psllq" => LiftSSEShift(instruction, "sll", 2),
+                "pslldq" => LiftSSEShift(instruction, "slldq", 1), // SSE2
+                "psraw" => LiftSSEShift(instruction, "sra", 8),
+                "psrad" => LiftSSEShift(instruction, "sra", 4),
+                
+                // Special instructions
+                "movmskps" => LiftSSEMoveMask(instruction, 4),
+                "movmskpd" => LiftSSEMoveMask(instruction, 2), // SSE2
+                "pmovmskb" => LiftSSEMoveMask(instruction, 16), // SSE2
+                "maskmovq" => LiftSSEMaskedMove(instruction, false),
+                "maskmovdqu" => LiftSSEMaskedMove(instruction, true), // SSE2
+                "movntq" => LiftSSEMoveNonTemporal(instruction),
+                "movntdq" => LiftSSEMoveNonTemporal(instruction), // SSE2
+                "lfence" => LiftSSEFence(instruction, "load"), // SSE2
+                "mfence" => LiftSSEFence(instruction, "memory"), // SSE2
+                "sfence" => LiftSSEFence(instruction, "store"), // SSE1
+                "clflush" => LiftSSECacheFlush(instruction), // SSE2
+                "pause" => LiftSSEPause(instruction), // SSE2
+                "emms" => LiftMMXEmptyState(instruction), // MMX
+                "lddqu" => LiftSSELoadUnaligned(instruction), // SSE3
+                
+                _ => LiftGenericSSEInstruction(instruction)
+            };
+        }
+
+        /// <summary>
+        /// Generic SSE instruction lifter for unsupported instructions
+        /// </summary>
+        private bool LiftGenericSSEInstruction(X86Decoder.X86Instruction instruction)
+        {
+            // For now, implement as NOP with dirty helper call
+            var tmp = _typeEnv.NewTemp(IRType.V128);
+            var callTarget = new IRCallTarget(0, $"x86g_dirtyhelper_SSE_{instruction.Mnemonic}", IntPtr.Zero);
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                new[] { IRExprFactory.U32((uint)instruction.Opcode) },
+                tmp,
+                IRType.V128
+            ));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Helper to get XMM register from XMM register number
+        /// </summary>
+        private string GetXMMRegisterName(int xmmRegNumber)
+        {
+            return $"XMM{xmmRegNumber}";
+        }
+
+        /// <summary>
+        /// Lift SSE move instructions (MOVUPS, MOVAPS)
+        /// </summary>
+        private bool LiftSSEMove(X86Decoder.X86Instruction instruction, bool aligned)
+        {
+            if (instruction.Operands.Count != 2)
+                return false;
+
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+
+            // Handle XMM to XMM move
+            if (dest.Type == X86Decoder.OperandType.XMMRegister && src.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                var srcRegName = GetXMMRegisterName(src.XMMRegister);
+                var destRegName = GetXMMRegisterName(dest.XMMRegister);
+
+                // Get source XMM register (128-bit)
+                var srcExpr = GetRegisterExpression(srcRegName);
+                
+                // Store to destination XMM register
+                return StoreToRegister(destRegName, srcExpr);
+            }
+
+            // Handle memory to XMM move
+            if (dest.Type == X86Decoder.OperandType.XMMRegister && src.Type == X86Decoder.OperandType.Memory)
+            {
+                var destRegName = GetXMMRegisterName(dest.XMMRegister);
+                var memoryExpr = CreateMemoryExpression(src.Memory);
+                if (memoryExpr == null) return false;
+
+                // Load 128 bits from memory
+                var loadExpr = IRExprFactory.Load(IREndness.LE, IRType.V128, memoryExpr);
+                return StoreToRegister(destRegName, loadExpr);
+            }
+
+            // Handle XMM to memory move
+            if (dest.Type == X86Decoder.OperandType.Memory && src.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                var srcRegName = GetXMMRegisterName(src.XMMRegister);
+                var memoryExpr = CreateMemoryExpression(dest.Memory);
+                if (memoryExpr == null) return false;
+
+                // Get source XMM register and store to memory
+                var srcExpr = GetRegisterExpression(srcRegName);
+                AddStatement(IRStmtFactory.Store(IREndness.LE, memoryExpr, srcExpr));
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Lift SSE arithmetic instructions
+        /// </summary>
+        private bool LiftSSEArithmetic(X86Decoder.X86Instruction instruction, string operation, int elementCount)
+        {
+            if (instruction.Operands.Count != 2)
+                return false;
+
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+
+            if (dest.Type != X86Decoder.OperandType.XMMRegister)
+                return false;
+
+            // For now, use dirty helper for SSE arithmetic operations
+            var tmp = _typeEnv.NewTemp(IRType.V128);
+            var callTarget = new IRCallTarget(0, $"x86g_dirtyhelper_SSE_{operation}", IntPtr.Zero);
+
+            var args = new List<IRExpr>
+            {
+                IRExprFactory.U32((uint)instruction.Opcode),
+                IRExprFactory.U32((uint)dest.XMMRegister),
+            };
+
+            if (src.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                args.Add(IRExprFactory.U32((uint)src.XMMRegister));
+            }
+            else if (src.Type == X86Decoder.OperandType.Memory)
+            {
+                var memoryExpr = CreateMemoryExpression(src.Memory);
+                if (memoryExpr == null) return false;
+                args.Add(memoryExpr);
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                args.ToArray(),
+                tmp,
+                IRType.V128
+            ));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Lift SSE logical instructions (ANDPS, ORPS, etc.)
+        /// </summary>
+        private bool LiftSSELogical(X86Decoder.X86Instruction instruction, string operation)
+        {
+            if (instruction.Operands.Count != 2)
+                return false;
+
+            var dest = instruction.Operands[0];
+            var src = instruction.Operands[1];
+
+            if (dest.Type != X86Decoder.OperandType.XMMRegister)
+                return false;
+
+            var destRegName = GetXMMRegisterName(dest.XMMRegister);
+            var destExpr = GetRegisterExpression(destRegName);
+            
+            IRExpr srcExpr;
+            if (src.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                var srcRegName = GetXMMRegisterName(src.XMMRegister);
+                srcExpr = GetRegisterExpression(srcRegName);
+            }
+            else if (src.Type == X86Decoder.OperandType.Memory)
+            {
+                var memoryExpr = CreateMemoryExpression(src.Memory);
+                if (memoryExpr == null) return false;
+                srcExpr = IRExprFactory.Load(IREndness.LE, IRType.V128, memoryExpr);
+            }
+            else
+            {
+                return false;
+            }
+
+            // For now, use dirty helper for logical operations on V128 until proper ops are available
+            var tmp = _typeEnv.NewTemp(IRType.V128);
+            var callTarget = new IRCallTarget(0, $"x86g_dirtyhelper_SSE_{operation}ps", IntPtr.Zero);
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                new[] { destExpr, srcExpr },
+                tmp,
+                IRType.V128
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Lift SSE scalar move instructions (MOVSS)
+        /// </summary>
+        private bool LiftSSEMoveScalar(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE low/high packed move instructions
+        /// </summary>
+        private bool LiftSSEMoveLowPacked(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        private bool LiftSSEMoveHighPacked(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE non-temporal move instructions
+        /// </summary>
+        private bool LiftSSEMoveNonTemporal(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE compare instructions
+        /// </summary>
+        private bool LiftSSECompare(X86Decoder.X86Instruction instruction, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        private bool LiftSSECompareScalar(X86Decoder.X86Instruction instruction, bool unordered)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE conversion instructions
+        /// </summary>
+        private bool LiftSSEConvert(X86Decoder.X86Instruction instruction, string conversionType)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE shuffle instructions
+        /// </summary>
+        private bool LiftSSEShuffle(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE unpack instructions
+        /// </summary>
+        private bool LiftSSEUnpack(X86Decoder.X86Instruction instruction, bool high)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Map decoder register names to guest state register names
+        /// </summary>
+        private string MapRegisterName(string decoderRegName)
+        {
+            return decoderRegName.ToUpper() switch
+            {
+                // 8-bit registers map to 32-bit
+                "AL" or "AH" => "EAX",
+                "BL" or "BH" => "EBX", 
+                "CL" or "CH" => "ECX",
+                "DL" or "DH" => "EDX",
+                
+                // 16-bit registers map to 32-bit
+                "AX" => "EAX",
+                "BX" => "EBX",
+                "CX" => "ECX", 
+                "DX" => "EDX",
+                "SP" => "ESP",
+                "BP" => "EBP",
+                "SI" => "ESI",
+                "DI" => "EDI",
+                
+                // 32-bit registers stay the same
+                "EAX" or "EBX" or "ECX" or "EDX" or "ESP" or "EBP" or "ESI" or "EDI" => decoderRegName.ToUpper(),
+                
+                // Default fallback
+                _ => decoderRegName.ToUpper()
+            };
+        }
+
+        // SSE2-4 specific helper methods
+
+        /// <summary>
+        /// Lift SSE horizontal operations (HADDPS, HSUBPS, etc.)
+        /// </summary>
+        private bool LiftSSEHorizontal(X86Decoder.X86Instruction instruction, string operation, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE integer arithmetic operations
+        /// </summary>
+        private bool LiftSSEIntegerArithmetic(X86Decoder.X86Instruction instruction, string operation, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE add/sub operations
+        /// </summary>
+        private bool LiftSSEAddSub(X86Decoder.X86Instruction instruction, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE comparison operations
+        /// </summary>
+        private bool LiftSSEIntegerCompare(X86Decoder.X86Instruction instruction, string operation, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE shift operations with immediate
+        /// </summary>
+        private bool LiftSSEShift(X86Decoder.X86Instruction instruction, string operation, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE convert operations
+        /// </summary>
+        private bool LiftSSEConvert(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE string comparison operations (SSE4.2)
+        /// </summary>
+        private bool LiftSSEStringCompare(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE blend operations (SSE4.1)
+        /// </summary>
+        private bool LiftSSEBlend(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE extract/insert operations (SSE4.1)
+        /// </summary>
+        private bool LiftSSEExtractInsert(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE dot product operations (SSE4.1)
+        /// </summary>
+        private bool LiftSSEDotProduct(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE move quadword operations
+        /// </summary>
+        private bool LiftSSEMoveQuadword(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE move doubleword operations
+        /// </summary>
+        private bool LiftSSEMoveDoubleword(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE move duplicate operations
+        /// </summary>
+        private bool LiftSSEMoveDuplicate(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE integer unpack operations
+        /// </summary>
+        private bool LiftSSEIntegerUnpack(X86Decoder.X86Instruction instruction, bool isHigh, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE pack operations
+        /// </summary>
+        private bool LiftSSEPack(X86Decoder.X86Instruction instruction, int elementCount, bool isSigned)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE integer min/max operations
+        /// </summary>
+        private bool LiftSSEIntegerMinMax(X86Decoder.X86Instruction instruction, string operation, int elementCount, bool isSigned)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE integer average operations
+        /// </summary>
+        private bool LiftSSEIntegerAverage(X86Decoder.X86Instruction instruction, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE move mask operations
+        /// </summary>
+        private bool LiftSSEMoveMask(X86Decoder.X86Instruction instruction, int elementCount)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE masked move operations
+        /// </summary>
+        private bool LiftSSEMaskedMove(X86Decoder.X86Instruction instruction, bool isSSE2)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE fence operations
+        /// </summary>
+        private bool LiftSSEFence(X86Decoder.X86Instruction instruction, string fenceType)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE cache flush operations
+        /// </summary>
+        private bool LiftSSECacheFlush(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE pause operation
+        /// </summary>
+        private bool LiftSSEPause(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift SSE load unaligned operations
+        /// </summary>
+        private bool LiftSSELoadUnaligned(X86Decoder.X86Instruction instruction)
+        {
+            return LiftGenericSSEInstruction(instruction);
+        }
+
+        /// <summary>
+        /// Lift AVX instruction with VEX encoding
+        /// </summary>
+        private bool LiftAVXInstruction(X86Decoder.X86Instruction instruction)
+        {
+            if (!instruction.HasVEXPrefix || instruction.VEX == null)
+                return false;
+
+            // Map AVX mnemonic to SSE equivalent for processing
+            string sseMnemonic = instruction.Mnemonic.StartsWith("v") ? 
+                instruction.Mnemonic.Substring(1) : instruction.Mnemonic;
+
+            // Determine vector size based on VEX.L bit
+            bool is256Bit = instruction.VEX.L;
+            int vectorSize = is256Bit ? 32 : 16; // 256-bit or 128-bit
+            
+            // Handle the instruction based on the base SSE mnemonic
+            return sseMnemonic switch
+            {
+                // Data movement instructions
+                "movups" or "movaps" or "movupd" or "movapd" => LiftAVXMove(instruction, is256Bit),
+                "movdqa" or "movdqu" => LiftAVXMove(instruction, is256Bit),
+                "movss" or "movsd" => LiftAVXMoveScalar(instruction, is256Bit),
+                
+                // Arithmetic instructions
+                "addps" or "addpd" or "addss" or "addsd" => LiftAVXArithmetic(instruction, "add", is256Bit),
+                "subps" or "subpd" or "subss" or "subsd" => LiftAVXArithmetic(instruction, "sub", is256Bit),
+                "mulps" or "mulpd" or "mulss" or "mulsd" => LiftAVXArithmetic(instruction, "mul", is256Bit),
+                "divps" or "divpd" or "divss" or "divsd" => LiftAVXArithmetic(instruction, "div", is256Bit),
+                "sqrtps" or "sqrtpd" or "sqrtss" or "sqrtsd" => LiftAVXArithmetic(instruction, "sqrt", is256Bit),
+                "maxps" or "maxpd" or "maxss" or "maxsd" => LiftAVXArithmetic(instruction, "max", is256Bit),
+                "minps" or "minpd" or "minss" or "minsd" => LiftAVXArithmetic(instruction, "min", is256Bit),
+                
+                // Logical instructions
+                "andps" or "andpd" => LiftAVXLogical(instruction, "and", is256Bit),
+                "andnps" or "andnpd" => LiftAVXLogical(instruction, "andnot", is256Bit),
+                "orps" or "orpd" => LiftAVXLogical(instruction, "or", is256Bit),
+                "xorps" or "xorpd" => LiftAVXLogical(instruction, "xor", is256Bit),
+                
+                // Unpack instructions
+                "unpcklps" or "unpcklpd" => LiftAVXUnpack(instruction, false, is256Bit),
+                "unpckhps" or "unpckhpd" => LiftAVXUnpack(instruction, true, is256Bit),
+                
+                // AVX2 Integer arithmetic operations
+                "paddb" or "paddw" or "paddd" or "paddq" => LiftAVX2IntegerArithmetic(instruction, "add", is256Bit),
+                "psubb" or "psubw" or "psubd" or "psubq" => LiftAVX2IntegerArithmetic(instruction, "sub", is256Bit),
+                "pmullw" or "pmulld" => LiftAVX2IntegerArithmetic(instruction, "mul", is256Bit),
+                "pand" => LiftAVX2IntegerLogical(instruction, "and", is256Bit),
+                "pandn" => LiftAVX2IntegerLogical(instruction, "andnot", is256Bit),
+                "por" => LiftAVX2IntegerLogical(instruction, "or", is256Bit),
+                "pxor" => LiftAVX2IntegerLogical(instruction, "xor", is256Bit),
+                
+                // AVX2 Shift operations
+                "psllw" or "pslld" or "psllq" => LiftAVX2Shift(instruction, "shl", is256Bit),
+                "psrlw" or "psrld" or "psrlq" => LiftAVX2Shift(instruction, "shr", is256Bit),
+                "psraw" or "psrad" => LiftAVX2Shift(instruction, "sar", is256Bit),
+                
+                // AVX2 Comparison operations  
+                "pcmpeqb" or "pcmpeqw" or "pcmpeqd" or "pcmpeqq" => LiftAVX2Compare(instruction, "eq", is256Bit),
+                "pcmpgtb" or "pcmpgtw" or "pcmpgtd" or "pcmpgtq" => LiftAVX2Compare(instruction, "gt", is256Bit),
+                
+                // AVX2 Min/Max operations
+                "pminsb" or "pminsd" or "pminuw" or "pminud" => LiftAVX2MinMax(instruction, "min", is256Bit),
+                "pmaxsb" or "pmaxsd" or "pmaxuw" or "pmaxud" => LiftAVX2MinMax(instruction, "max", is256Bit),
+                
+                // AVX2 Broadcast operations
+                "broadcastss" or "broadcastsd" => LiftAVX2Broadcast(instruction, is256Bit),
+                "broadcastd" or "broadcastq" => LiftAVX2Broadcast(instruction, is256Bit),
+                "broadcastf128" or "broadcasti128" => LiftAVX2Broadcast(instruction, is256Bit),
+                
+                // AVX2 Gather operations (complex)
+                "gatherdps" or "gatherqps" or "gatherdpd" or "gatherqpd" => LiftAVX2Gather(instruction, is256Bit),
+                "pgatherdd" or "pgatherqd" or "pgatherdq" or "pgatherqq" => LiftAVX2Gather(instruction, is256Bit),
+                
+                // AVX2 Permute operations
+                "permps" or "permpd" or "permq" => LiftAVX2Permute(instruction, is256Bit),
+                "perm2f128" or "perm2i128" => LiftAVX2Permute(instruction, is256Bit),
+                
+                // AVX2 Blend operations
+                "blendps" or "blendpd" or "blendd" => LiftAVX2Blend(instruction, is256Bit),
+                "blendvps" or "blendvpd" or "blendvb" => LiftAVX2Blend(instruction, is256Bit),
+                
+                _ => LiftGenericAVXInstruction(instruction, is256Bit)
+            };
+        }
+
+        /// <summary>
+        /// Lift AVX move instructions with proper 3-operand handling
+        /// </summary>
+        private bool LiftAVXMove(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            if (instruction.Operands.Count < 2)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            var srcOperand = instruction.Operands[instruction.Operands.Count - 1]; // Last operand is source
+
+            // Get destination register name
+            string destRegName = GetAVXRegisterName(destOperand, is256Bit);
+            if (destRegName == null)
+                return false;
+
+            // Create source expression
+            IRExpr srcExpr;
+            if (srcOperand.Type == X86Decoder.OperandType.Memory)
+            {
+                var memoryExpr = CreateMemoryExpression(srcOperand.Memory);
+                if (memoryExpr == null)
+                    return false;
+                    
+                var loadType = is256Bit ? IRType.V256 : IRType.V128;
+                srcExpr = IRExprFactory.Load(IREndness.LE, loadType, memoryExpr);
+            }
+            else
+            {
+                string srcRegName = GetAVXRegisterName(srcOperand, is256Bit);
+                if (srcRegName == null)
+                    return false;
+                srcExpr = GetRegisterExpression(srcRegName);
+            }
+
+            return StoreToRegister(destRegName, srcExpr);
+        }
+
+        /// <summary>
+        /// Lift AVX arithmetic instructions with 3-operand format
+        /// </summary>
+        private bool LiftAVXArithmetic(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            if (instruction.Operands.Count < 2)
+                return false;
+
+            // AVX arithmetic: dest = src1 op src2 (3-operand format)
+            var destOperand = instruction.Operands[0];
+            string destRegName = GetAVXRegisterName(destOperand, is256Bit);
+            if (destRegName == null)
+                return false;
+
+            // For now, use dirty helper for complex 3-operand AVX operations
+            var vectorType = is256Bit ? IRType.V256 : IRType.V128;
+            var tmp = _typeEnv.NewTemp(vectorType);
+            var helperName = $"avx_{operation}_{(is256Bit ? "256" : "128")}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            // Collect operand expressions
+            var operandExprs = new List<IRExpr>();
+            for (int i = 1; i < instruction.Operands.Count; i++)
+            {
+                var operand = instruction.Operands[i];
+                IRExpr operandExpr;
+                
+                if (operand.Type == X86Decoder.OperandType.Memory)
+                {
+                    var memoryExpr = CreateMemoryExpression(operand.Memory);
+                    if (memoryExpr == null)
+                        return false;
+                    operandExpr = IRExprFactory.Load(IREndness.LE, vectorType, memoryExpr);
+                }
+                else
+                {
+                    string regName = GetAVXRegisterName(operand, is256Bit);
+                    if (regName == null)
+                        return false;
+                    operandExpr = GetRegisterExpression(regName);
+                }
+                operandExprs.Add(operandExpr);
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                operandExprs.ToArray(),
+                tmp,
+                vectorType
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Lift AVX logical instructions
+        /// </summary>
+        private bool LiftAVXLogical(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, operation, is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX unpack instructions
+        /// </summary>
+        private bool LiftAVXUnpack(X86Decoder.X86Instruction instruction, bool isHigh, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, isHigh ? "unpackhi" : "unpacklo", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX scalar move instructions
+        /// </summary>
+        private bool LiftAVXMoveScalar(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            // Scalar moves affect only the lower bits, upper bits may be zeroed
+            return LiftAVXMove(instruction, is256Bit);
+        }
+
+        /// <summary>
+        /// Generic AVX instruction lifter for unsupported instructions
+        /// </summary>
+        private bool LiftGenericAVXInstruction(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            if (instruction.Operands.Count == 0)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            string destRegName = GetAVXRegisterName(destOperand, is256Bit);
+            if (destRegName == null)
+                return false;
+
+            // Use dirty helper for unsupported AVX instructions
+            var vectorType = is256Bit ? IRType.V256 : IRType.V128;
+            var tmp = _typeEnv.NewTemp(vectorType);
+            var helperName = $"avx_{instruction.Mnemonic}_{(is256Bit ? "256" : "128")}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null, // No guard
+                new IRExpr[0], // No operands for now
+                tmp,
+                vectorType
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Get AVX register name from operand
+        /// </summary>
+        private string? GetAVXRegisterName(X86Decoder.X86Operand operand, bool is256Bit)
+        {
+            if (is256Bit && operand.Type == X86Decoder.OperandType.YMMRegister)
+            {
+                return $"YMM{operand.YMMRegister}";
+            }
+            else if (!is256Bit && operand.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                return $"XMM{operand.XMMRegister}";
+            }
+            else if (!is256Bit && operand.Type == X86Decoder.OperandType.YMMRegister)
+            {
+                // Using lower 128 bits of YMM register
+                return $"XMM{operand.YMMRegister}";
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Lift AVX2 integer arithmetic operations
+        /// </summary>
+        private bool LiftAVX2IntegerArithmetic(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"int_{operation}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 integer logical operations
+        /// </summary>
+        private bool LiftAVX2IntegerLogical(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXLogical(instruction, $"int_{operation}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 shift operations
+        /// </summary>
+        private bool LiftAVX2Shift(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"shift_{operation}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 comparison operations
+        /// </summary>
+        private bool LiftAVX2Compare(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"cmp_{operation}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 min/max operations
+        /// </summary>
+        private bool LiftAVX2MinMax(X86Decoder.X86Instruction instruction, string operation, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"minmax_{operation}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 broadcast operations
+        /// </summary>
+        private bool LiftAVX2Broadcast(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            if (instruction.Operands.Count < 2)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            var srcOperand = instruction.Operands[1];
+
+            string destRegName = GetAVXRegisterName(destOperand, is256Bit);
+            if (destRegName == null)
+                return false;
+
+            // Broadcast operations replicate data across vector lanes
+            var vectorType = is256Bit ? IRType.V256 : IRType.V128;
+            var tmp = _typeEnv.NewTemp(vectorType);
+            var helperName = $"avx2_broadcast_{instruction.Mnemonic}_{(is256Bit ? "256" : "128")}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            // Create source expression
+            IRExpr srcExpr;
+            if (srcOperand.Type == X86Decoder.OperandType.Memory)
+            {
+                var memoryExpr = CreateMemoryExpression(srcOperand.Memory);
+                if (memoryExpr == null)
+                    return false;
+                srcExpr = IRExprFactory.Load(IREndness.LE, GetBroadcastSourceType(instruction.Mnemonic), memoryExpr);
+            }
+            else
+            {
+                string srcRegName = GetAVXRegisterName(srcOperand, false); // Broadcast source is typically smaller
+                if (srcRegName == null)
+                    return false;
+                srcExpr = GetRegisterExpression(srcRegName);
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null,
+                new[] { srcExpr },
+                tmp,
+                vectorType
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Lift AVX2 gather operations (complex scatter-gather memory access)
+        /// </summary>
+        private bool LiftAVX2Gather(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            if (instruction.Operands.Count < 3)
+                return false;
+
+            // Gather operations have complex syntax: VGATHERDPS ymm1, [base + ymm2*scale], ymm3
+            var vectorType = is256Bit ? IRType.V256 : IRType.V128;
+            var tmp = _typeEnv.NewTemp(vectorType);
+            var helperName = $"avx2_gather_{instruction.Mnemonic}_{(is256Bit ? "256" : "128")}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            // For now, use a simplified dirty helper approach
+            // In a full implementation, we'd need to handle the complex addressing mode
+            var operandExprs = new List<IRExpr>();
+            for (int i = 0; i < instruction.Operands.Count; i++)
+            {
+                var operand = instruction.Operands[i];
+                if (operand.Type == X86Decoder.OperandType.Memory)
+                {
+                    var memExpr = CreateMemoryExpression(operand.Memory);
+                    if (memExpr != null)
+                        operandExprs.Add(memExpr);
+                }
+                else
+                {
+                    string regName = GetAVXRegisterName(operand, i == 0 ? is256Bit : false);
+                    if (regName != null)
+                        operandExprs.Add(GetRegisterExpression(regName));
+                }
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null,
+                operandExprs.ToArray(),
+                tmp,
+                vectorType
+            ));
+
+            // Store to destination (first operand)
+            var destOperand = instruction.Operands[0];
+            string destRegName = GetAVXRegisterName(destOperand, is256Bit);
+            if (destRegName == null)
+                return false;
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Lift AVX2 permute operations
+        /// </summary>
+        private bool LiftAVX2Permute(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"permute_{instruction.Mnemonic}", is256Bit);
+        }
+
+        /// <summary>
+        /// Lift AVX2 blend operations
+        /// </summary>
+        private bool LiftAVX2Blend(X86Decoder.X86Instruction instruction, bool is256Bit)
+        {
+            return LiftAVXArithmetic(instruction, $"blend_{instruction.Mnemonic}", is256Bit);
+        }
+
+        /// <summary>
+        /// Get the source type for broadcast operations
+        /// </summary>
+        private IRType GetBroadcastSourceType(string mnemonic)
+        {
+            return mnemonic switch
+            {
+                var m when m.Contains("ss") => IRType.F32,
+                var m when m.Contains("sd") => IRType.F64,
+                var m when m.Contains("d") => IRType.I32,
+                var m when m.Contains("q") => IRType.I64,
+                _ => IRType.I32
+            };
+        }
+
+        /// <summary>
+        /// Lift AVX-512 instruction with EVEX encoding
+        /// </summary>
+        private bool LiftAVX512Instruction(X86Decoder.X86Instruction instruction)
+        {
+            if (!instruction.HasEVEXPrefix || instruction.EVEX == null)
+                return false;
+
+            // Get vector length from EVEX.LL field
+            int vectorLength = instruction.EVEX.GetVectorLength();
+            IRType vectorType = vectorLength switch
+            {
+                128 => IRType.V128,
+                256 => IRType.V256,
+                512 => IRType.V512,
+                _ => IRType.V128 // Default fallback
+            };
+
+            // Handle mask register support
+            bool hasMasking = instruction.EVEX.HasMasking();
+            int maskRegister = instruction.EVEX.GetMaskRegister();
+
+            // Map AVX-512 mnemonic to base operation
+            return instruction.Mnemonic switch
+            {
+                // Data movement instructions
+                "vmovdqu32" or "vmovdqu64" => LiftAVX512Move(instruction, vectorType, hasMasking),
+                
+                // Integer arithmetic instructions  
+                "vpaddd" or "vpaddq" => LiftAVX512IntegerArithmetic(instruction, "add", vectorType, hasMasking),
+                "vpsubd" or "vpsubq" => LiftAVX512IntegerArithmetic(instruction, "sub", vectorType, hasMasking),
+                "vpmulld" or "vpmullq" => LiftAVX512IntegerArithmetic(instruction, "mul", vectorType, hasMasking),
+                
+                // Logical instructions
+                "vpandd" or "vpandq" => LiftAVX512Logical(instruction, "and", vectorType, hasMasking),
+                "vpord" or "vporq" => LiftAVX512Logical(instruction, "or", vectorType, hasMasking),
+                "vpxord" or "vpxorq" => LiftAVX512Logical(instruction, "xor", vectorType, hasMasking),
+                
+                _ => LiftGenericAVX512Instruction(instruction, vectorType, hasMasking)
+            };
+        }
+
+        /// <summary>
+        /// Lift AVX-512 move instructions with 512-bit support
+        /// </summary>
+        private bool LiftAVX512Move(X86Decoder.X86Instruction instruction, IRType vectorType, bool hasMasking)
+        {
+            if (instruction.Operands.Count < 2)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            var srcOperand = instruction.Operands[instruction.Operands.Count - 1];
+
+            // Get destination register name
+            string destRegName = GetAVX512RegisterName(destOperand, vectorType);
+            if (destRegName == null)
+                return false;
+
+            // Create source expression
+            IRExpr srcExpr;
+            if (srcOperand.Type == X86Decoder.OperandType.Memory)
+            {
+                var memoryExpr = CreateMemoryExpression(srcOperand.Memory);
+                if (memoryExpr == null)
+                    return false;
+                    
+                srcExpr = IRExprFactory.Load(IREndness.LE, vectorType, memoryExpr);
+            }
+            else
+            {
+                string srcRegName = GetAVX512RegisterName(srcOperand, vectorType);
+                if (srcRegName == null)
+                    return false;
+                srcExpr = GetRegisterExpression(srcRegName);
+            }
+
+            // Handle masking if present
+            if (hasMasking)
+            {
+                // Use dirty helper for masked operations
+                var tmp = _typeEnv.NewTemp(vectorType);
+                var helperName = $"avx512_masked_move_{GetVectorTypeSize(vectorType)}";
+                var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+                
+                AddStatement(IRStmtFactory.Dirty(
+                    callTarget,
+                    null,
+                    new[] { srcExpr, GetMaskRegisterExpression(instruction.EVEX.GetMaskRegister()) },
+                    tmp,
+                    vectorType
+                ));
+                
+                return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+            }
+            else
+            {
+                return StoreToRegister(destRegName, srcExpr);
+            }
+        }
+
+        /// <summary>
+        /// Lift AVX-512 integer arithmetic instructions
+        /// </summary>
+        private bool LiftAVX512IntegerArithmetic(X86Decoder.X86Instruction instruction, string operation, IRType vectorType, bool hasMasking)
+        {
+            if (instruction.Operands.Count < 2)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            string destRegName = GetAVX512RegisterName(destOperand, vectorType);
+            if (destRegName == null)
+                return false;
+
+            // Use dirty helper for AVX-512 arithmetic operations
+            var tmp = _typeEnv.NewTemp(vectorType);
+            string helperName = hasMasking ? 
+                $"avx512_masked_{operation}_{GetVectorTypeSize(vectorType)}" :
+                $"avx512_{operation}_{GetVectorTypeSize(vectorType)}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            // Collect operand expressions
+            var operandExprs = new List<IRExpr>();
+            for (int i = 1; i < instruction.Operands.Count; i++)
+            {
+                var operand = instruction.Operands[i];
+                IRExpr operandExpr;
+                
+                if (operand.Type == X86Decoder.OperandType.Memory)
+                {
+                    var memoryExpr = CreateMemoryExpression(operand.Memory);
+                    if (memoryExpr == null)
+                        return false;
+                    operandExpr = IRExprFactory.Load(IREndness.LE, vectorType, memoryExpr);
+                }
+                else
+                {
+                    string regName = GetAVX512RegisterName(operand, vectorType);
+                    if (regName == null)
+                        return false;
+                    operandExpr = GetRegisterExpression(regName);
+                }
+                operandExprs.Add(operandExpr);
+            }
+
+            // Add mask register if masking is enabled
+            if (hasMasking)
+            {
+                operandExprs.Add(GetMaskRegisterExpression(instruction.EVEX.GetMaskRegister()));
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null,
+                operandExprs.ToArray(),
+                tmp,
+                vectorType
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Lift AVX-512 logical instructions
+        /// </summary>
+        private bool LiftAVX512Logical(X86Decoder.X86Instruction instruction, string operation, IRType vectorType, bool hasMasking)
+        {
+            return LiftAVX512IntegerArithmetic(instruction, operation, vectorType, hasMasking);
+        }
+
+        /// <summary>
+        /// Generic AVX-512 instruction lifter
+        /// </summary>
+        private bool LiftGenericAVX512Instruction(X86Decoder.X86Instruction instruction, IRType vectorType, bool hasMasking)
+        {
+            if (instruction.Operands.Count == 0)
+                return false;
+
+            var destOperand = instruction.Operands[0];
+            string destRegName = GetAVX512RegisterName(destOperand, vectorType);
+            if (destRegName == null)
+                return false;
+
+            // Use dirty helper for generic AVX-512 operations
+            var tmp = _typeEnv.NewTemp(vectorType);
+            string helperName = hasMasking ?
+                $"avx512_masked_{instruction.Mnemonic}_{GetVectorTypeSize(vectorType)}" :
+                $"avx512_{instruction.Mnemonic}_{GetVectorTypeSize(vectorType)}";
+            var callTarget = new IRCallTarget(0, helperName, IntPtr.Zero);
+
+            // Create operand expressions
+            var operandExprs = new List<IRExpr>();
+            for (int i = 1; i < instruction.Operands.Count; i++)
+            {
+                var operand = instruction.Operands[i];
+                
+                if (operand.Type == X86Decoder.OperandType.Memory)
+                {
+                    var memoryExpr = CreateMemoryExpression(operand.Memory);
+                    if (memoryExpr == null)
+                        return false;
+                    operandExprs.Add(IRExprFactory.Load(IREndness.LE, vectorType, memoryExpr));
+                }
+                else
+                {
+                    string regName = GetAVX512RegisterName(operand, vectorType);
+                    if (regName == null)
+                        return false;
+                    operandExprs.Add(GetRegisterExpression(regName));
+                }
+            }
+
+            // Add mask register if masking is enabled
+            if (hasMasking)
+            {
+                operandExprs.Add(GetMaskRegisterExpression(instruction.EVEX.GetMaskRegister()));
+            }
+
+            AddStatement(IRStmtFactory.Dirty(
+                callTarget,
+                null,
+                operandExprs.ToArray(),
+                tmp,
+                vectorType
+            ));
+
+            return StoreToRegister(destRegName, IRExprFactory.RdTmp(tmp));
+        }
+
+        /// <summary>
+        /// Get AVX-512 register name based on operand and vector type
+        /// </summary>
+        private string? GetAVX512RegisterName(X86Decoder.X86Operand operand, IRType vectorType)
+        {
+            if (operand.Type == X86Decoder.OperandType.ZMMRegister)
+            {
+                return $"GuestZMM{operand.ZMMRegister}";
+            }
+            else if (operand.Type == X86Decoder.OperandType.YMMRegister)
+            {
+                // YMM register access within ZMM context
+                return $"GuestYMM{operand.YMMRegister}";
+            }
+            else if (operand.Type == X86Decoder.OperandType.XMMRegister)
+            {
+                // XMM register access within ZMM context
+                return $"GuestXMM{operand.XMMRegister}";
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// Get mask register expression for AVX-512 masking
+        /// </summary>
+        private IRExpr GetMaskRegisterExpression(int maskRegister)
+        {
+            return GetRegisterExpression($"GuestK{maskRegister}");
+        }
+
+        /// <summary>
+        /// Get vector type size string for helper naming
+        /// </summary>
+        private string GetVectorTypeSize(IRType vectorType)
+        {
+            return vectorType switch
+            {
+                IRType.V128 => "128",
+                IRType.V256 => "256", 
+                IRType.V512 => "512",
+                _ => "128"
+            };
+        }
+        
+        #endregion
+    }
+
+    /// <summary>
+    /// Helper class that provides X86-specific processor extension support
+    /// </summary>
+    internal class X86ProcessorExtensionHelper : BaseX86Lifter
+    {
+        /// <summary>
+        /// x86 architecture word size (4 bytes)
+        /// </summary>
+        protected override int ArchWordSize => 4;
+        
+        /// <summary>
+        /// x86 stack word size (4 bytes)
+        /// </summary>
+        protected override int StackWordSize => 4;
+        
+        /// <summary>
+        /// x86 address type (32-bit)
+        /// </summary>
+        protected override IRType ArchAddressType => IRType.I32;
+        
+        /// <summary>
+        /// x86 stack pointer register
+        /// </summary>
+        protected override string StackPointerRegister => "esp";
+    }
+}

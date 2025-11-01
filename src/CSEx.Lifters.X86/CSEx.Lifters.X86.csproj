@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CSEx.Core\CSEx.Core.csproj" />
+    <ProjectReference Include="..\CSEx.IR\CSEx.IR.csproj" />
+    <ProjectReference Include="..\CSEx.Guests\CSEx.Guests.csproj" />
+    <ProjectReference Include="..\CSEx.Guests.X86\CSEx.Guests.X86.csproj" />
+  </ItemGroup>
+
+</Project>
