@@ -134,6 +134,60 @@ foreach (var block in cfg.BasicBlocks)
 }
 ```
 
+### Command-Line Binary Analysis
+
+CSEx includes command-line tools for direct binary analysis and IR inspection:
+
+```bash
+# Lift raw machine code bytes to VEX IR
+dotnet run --project examples/CSEx.Examples.Disassembler -- \
+    --arch amd64 \
+    --bytes "48c7c0ef010000c3" \
+    --address 0x401000
+
+# Output: VEX IR statements for the instruction sequence
+# IRStmt_IMark(0x401000, 7, 0)
+# IRStmt_Put(RAX, 0x1ef:I64)
+# IRStmt_IMark(0x401007, 1, 0)  
+# IRStmt_Exit(0x1:I1, Ret, 0x401008:I64, 0)
+```
+
+For testing and development, you can create a simple lifter application:
+
+```csharp
+using CSEx.Lifters.AMD64;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Raw bytes: mov rax, 0x1ef; ret
+        var bytes = new byte[] { 0x48, 0xc7, 0xc0, 0xef, 0x01, 0x00, 0x00, 0xc3 };
+        var baseAddress = 0x401000UL;
+        
+        // Create AMD64 lifter
+        var lifter = new AMD64BasicBlockLifter();
+        
+        // Decode and lift instructions
+        var decoder = new AMD64InstructionDecoder();
+        var instructions = decoder.DecodeBlock(bytes, baseAddress);
+        
+        // Lift to VEX IR
+        var irsb = lifter.LiftBasicBlock(instructions);
+        
+        // Print IR statements
+        Console.WriteLine($"Basic Block at 0x{baseAddress:X8}:");
+        foreach (var stmt in irsb.Statements)
+        {
+            Console.WriteLine($"  {stmt}");
+        }
+        
+        Console.WriteLine($"Jump Kind: {irsb.JumpKind}");
+        Console.WriteLine($"Next: {irsb.Next}");
+    }
+}
+```
+
 ## Implementation Status
 
 ### Core Infrastructure ✅
